@@ -53,3 +53,16 @@ def test_detect_collisions_raises_on_duplicate_output(tmp_path):
     msg = str(ei.value)
     assert "Foo.html" in msg
     assert "foo.html" in msg
+
+
+def test_write_output_creates_parent_dirs(tmp_path):
+    out = tmp_path / "deep" / "nested" / "file.md"
+    write_output(out, "content")
+    assert out.read_text(encoding="utf-8") == "content"
+
+
+def test_write_output_overwrites_existing(tmp_path):
+    out = tmp_path / "file.md"
+    out.write_text("old")
+    write_output(out, "new")
+    assert out.read_text(encoding="utf-8") == "new"
