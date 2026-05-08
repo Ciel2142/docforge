@@ -1,0 +1,28 @@
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/dolt/
+.beads/embeddeddolt/
+.beads/dolt-server.port
+.beads/.local_version
+.beads/push-state.json
+.beads/export-state.json
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
