@@ -6,6 +6,7 @@ from pathlib import Path
 from . import __version__
 from .convert import ConvertStatus, convert_html
 from .links import rewrite_internal_links
+from .openapi.cli import add_openapi_subparser
 from .output import build_output, detect_collisions, write_output
 from .title import extract_title
 from .walk import iter_html_files
@@ -16,42 +17,51 @@ log = logging.getLogger("docforge")
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="docforge",
+        description="Convert documentation sources to Markdown for RAG ingestion.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--version", action="version", version=f"docforge {__version__}")
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-v", "--verbose", action="store_true", help="DEBUG-level logging")
+    verbosity.add_argument("-q", "--quiet", action="store_true", help="WARNING-level logging")
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    _add_convert_subparser(subparsers)
+    add_openapi_subparser(subparsers)
+    return parser
+
+
+def _add_convert_subparser(subparsers: argparse._SubParsersAction) -> None:
+    sp = subparsers.add_parser(
+        "convert",
+        help="Convert HTML to Markdown",
         description="Convert documentation HTML to Markdown for RAG ingestion.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  docforge ~/docs/diadok --output ~/docs/diadok-md\n"
-            "  docforge page.html --output ./out\n"
-            "  docforge ~/docs/some-corpus --output /tmp/out --dry-run -v\n"
+            "  docforge convert ~/docs/diadok --output ~/docs/diadok-md\n"
+            "  docforge convert page.html --output ./out\n"
         ),
     )
-    parser.add_argument("source", help="path to HTML file or directory")
-    parser.add_argument("--output", required=True, help="output directory (mirrors source structure)")
-    parser.add_argument(
+    sp.add_argument("source", help="path to HTML file or directory")
+    sp.add_argument("--output", required=True, help="output directory (mirrors source structure)")
+    sp.add_argument(
         "--fail-threshold",
         type=float,
         default=0.10,
         help="max acceptable failure ratio before exit 1 (default 0.10; set 1.0 to disable)",
     )
-    parser.add_argument(
+    sp.add_argument(
         "--max-bytes",
         type=int,
         default=52_428_800,
         help="skip HTML files larger than N bytes (default 50MB)",
     )
-    parser.add_argument("--dry-run", action="store_true", help="walk + report planned outputs, write nothing")
-    verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument("-v", "--verbose", action="store_true", help="DEBUG-level logging")
-    verbosity.add_argument("-q", "--quiet", action="store_true", help="WARNING-level logging")
-    parser.add_argument("--version", action="version", version=f"docforge {__version__}")
-    return parser
+    sp.add_argument("--dry-run", action="store_true", help="walk + report planned outputs, write nothing")
+    sp.set_defaults(func=run_convert)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    _configure_logging(args.verbose, args.quiet)
-
+def run_convert(args: argparse.Namespace) -> int:
     source = Path(args.source).expanduser()
     output = Path(args.output).expanduser()
 
@@ -128,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    _configure_logging(args.verbose, args.quiet)
+    return args.func(args)
 
 
 def _configure_logging(verbose: bool, quiet: bool) -> None:
