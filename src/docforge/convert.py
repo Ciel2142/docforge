@@ -35,3 +35,11 @@ def _select_body(soup: BeautifulSoup) -> Tag | None:
         return None
     inner = main.find("div", attrs={"itemprop": "articleBody"})
     return inner if inner is not None else main
+
+
+def _strip_sphinx_noise(body: Tag) -> None:
+    """Remove Sphinx-specific anchors that pollute markdown output."""
+    for a in body.find_all("a", class_="headerlink"):
+        a.decompose()
+    for a in body.find_all("a", class_="viewcode-link"):
+        a.decompose()

@@ -1,4 +1,4 @@
-from docforge.convert import ConvertResult, ConvertStatus, _select_body
+from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise
 from bs4 import BeautifulSoup
 
 
@@ -46,3 +46,30 @@ def test_select_body_returns_main_when_no_articleBody():
 def test_select_body_returns_none_when_neither_present():
     html = "<html><body><main><h1>Q</h1></main></body></html>"
     assert _select_body(_soup(html)) is None
+
+
+def test_strip_removes_headerlink_anchors():
+    s = _soup(
+        '<div><h1>Title<a class="headerlink" href="#title">¶</a></h1></div>'
+    )
+    body = s.find("div")
+    _strip_sphinx_noise(body)
+    assert body.find("a", class_="headerlink") is None
+    assert body.find("h1").get_text() == "Title"
+
+
+def test_strip_removes_viewcode_link_anchors():
+    s = _soup(
+        '<div><h1>X</h1><a class="viewcode-link">[source]</a></div>'
+    )
+    body = s.find("div")
+    _strip_sphinx_noise(body)
+    assert body.find("a", class_="viewcode-link") is None
+
+
+def test_strip_leaves_normal_anchors_alone():
+    s = _soup('<div><a href="other.html">Other</a></div>')
+    body = s.find("div")
+    _strip_sphinx_noise(body)
+    assert body.find("a") is not None
+    assert body.find("a").get_text() == "Other"
