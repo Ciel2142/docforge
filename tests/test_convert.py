@@ -1,4 +1,4 @@
-from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise
+from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments
 from bs4 import BeautifulSoup
 
 
@@ -73,3 +73,49 @@ def test_strip_leaves_normal_anchors_alone():
     _strip_sphinx_noise(body)
     assert body.find("a") is not None
     assert body.find("a").get_text() == "Other"
+
+
+def test_flatten_pygments_with_language():
+    html = (
+        '<div class="highlight-python"><div class="highlight"><pre>'
+        '<span class="kn">def</span> <span class="nf">foo</span>():\n'
+        "    pass\n"
+        "</pre></div></div>"
+    )
+    s = _soup(f"<div>{html}</div>")
+    body = s.find("div")
+    _flatten_pygments(s, body)
+    pre = body.find("pre")
+    code = pre.find("code")
+    assert code is not None
+    assert code.get("class") == ["language-python"]
+    assert "def foo()" in code.get_text()
+
+
+def test_flatten_pygments_with_highlight_default_emits_no_language():
+    html = (
+        '<div class="highlight-default"><div class="highlight"><pre>'
+        "<span>plain text</span>\n</pre></div></div>"
+    )
+    s = _soup(f"<div>{html}</div>")
+    body = s.find("div")
+    _flatten_pygments(s, body)
+    pre = body.find("pre")
+    code = pre.find("code")
+    assert code is not None
+    assert code.get("class") is None or code.get("class") == []
+    assert "plain text" in code.get_text()
+
+
+def test_flatten_pygments_handles_nested_highlight_div_alone():
+    html = (
+        '<div class="highlight"><pre>'
+        "<span>x = 1</span>\n</pre></div>"
+    )
+    s = _soup(f"<div>{html}</div>")
+    body = s.find("div")
+    _flatten_pygments(s, body)
+    pre = body.find("pre")
+    code = pre.find("code")
+    assert code is not None
+    assert "x = 1" in code.get_text()
