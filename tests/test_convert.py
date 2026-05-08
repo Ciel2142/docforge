@@ -1,4 +1,4 @@
-from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments, _h1_text, _soup_title_text
+from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments, _h1_text, _soup_title_text, convert_html
 from bs4 import BeautifulSoup
 
 
@@ -146,3 +146,57 @@ def test_soup_title_text_returns_none_when_missing():
 def test_soup_title_text_returns_none_when_blank():
     s = _soup("<html><head><title>   </title></head></html>")
     assert _soup_title_text(s) is None
+
+
+def test_convert_html_returns_ok_for_articleBody():
+    html = (
+        "<html><head><title>Doc</title></head>"
+        '<body><div itemprop="articleBody">'
+        "<h1>Heading</h1><p>Hello world.</p>"
+        "</div></body></html>"
+    )
+    r = convert_html(html)
+    assert r.status == ConvertStatus.OK
+    assert r.body_md is not None
+    assert "Hello world." in r.body_md
+    assert r.h1_text == "Heading"
+    assert r.soup_title_text == "Doc"
+
+
+def test_convert_html_returns_empty_when_no_body():
+    html = "<html><body><main><h1>X</h1></main></body></html>"
+    r = convert_html(html)
+    assert r.status == ConvertStatus.EMPTY
+    assert r.body_md is None
+
+
+def test_convert_html_returns_failed_on_exception(monkeypatch):
+    import docforge.convert as mod
+
+    def boom(*a, **kw):
+        raise RuntimeError("kreuzberg blew up")
+
+    monkeypatch.setattr(mod.html_to_markdown, "convert", boom)
+    html = (
+        '<html><body><div itemprop="articleBody"><h1>X</h1></div></body></html>'
+    )
+    r = convert_html(html)
+    assert r.status == ConvertStatus.FAILED
+    assert r.error is not None
+    assert "kreuzberg" in r.error
+
+
+def test_convert_html_emits_atx_headings_and_fenced_code():
+    html = (
+        '<html><body><div itemprop="articleBody">'
+        '<h1>T</h1>'
+        '<div class="highlight-python"><div class="highlight"><pre>'
+        '<span>x = 1</span>'
+        '</pre></div></div>'
+        '</div></body></html>'
+    )
+    r = convert_html(html)
+    assert r.status == ConvertStatus.OK
+    assert r.body_md.startswith("# T") or "\n# T" in r.body_md
+    assert "```python" in r.body_md
+    assert "x = 1" in r.body_md

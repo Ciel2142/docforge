@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
+import html_to_markdown
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
@@ -112,3 +113,34 @@ def _soup_title_text(soup: BeautifulSoup) -> str | None:
         return None
     text = title.get_text(strip=True)
     return text or None
+
+
+def convert_html(raw_html: str) -> ConvertResult:
+    """Convert one HTML document to Markdown.
+
+    Returns ConvertResult with status:
+      - OK: body_md, h1_text, soup_title_text populated.
+      - EMPTY: no Sphinx body found; everything else None.
+      - FAILED: exception raised somewhere; error populated.
+
+    Caller is responsible for the final link-rewrite + assembly step.
+    """
+    try:
+        soup = BeautifulSoup(raw_html, "lxml")
+        body = _select_body(soup)
+        if body is None:
+            return ConvertResult(status=ConvertStatus.EMPTY)
+        h1_text = _h1_text(body)
+        soup_title_text = _soup_title_text(soup)
+        _strip_sphinx_noise(body)
+        _flatten_pygments(soup, body)
+        result = html_to_markdown.convert(str(body))
+        body_md = result.content.strip()
+        return ConvertResult(
+            status=ConvertStatus.OK,
+            body_md=body_md,
+            h1_text=h1_text,
+            soup_title_text=soup_title_text,
+        )
+    except Exception as e:  # noqa: BLE001
+        return ConvertResult(status=ConvertStatus.FAILED, error=f"{type(e).__name__}: {e}")
