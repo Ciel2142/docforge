@@ -1,13 +1,14 @@
 import re
 
 # Markdown link form: [text](href.html#anchor)
+# `//host/...` is a protocol-relative URL — treat as external.
 _MD_LINK_RE = re.compile(
-    r"\]\((?!https?://|mailto:|#)([^)\s]+?)\.html(#[^)\s]*)?\)"
+    r"\]\((?!https?://|//|mailto:|#)([^)\s]+?)\.html(#[^)\s]*)?\)"
 )
 
 # Autolink form: <href.html#anchor>
 _AUTOLINK_RE = re.compile(
-    r"<(?!https?://|mailto:)([^>\s]+?)\.html(#[^>\s]*)?>"
+    r"<(?!https?://|//|mailto:)([^>\s]+?)\.html(#[^>\s]*)?>"
 )
 
 

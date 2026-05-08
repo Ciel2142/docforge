@@ -75,3 +75,13 @@ def test_autolink_external_http_untouched():
 def test_autolink_subdir_rewritten():
     md = "<dir/sub/page.html>"
     assert rewrite_internal_links(md) == "<dir/sub/page.md>"
+
+
+def test_protocol_relative_md_link_untouched():
+    md = "[CDN](//cdn.example.com/page.html)"
+    assert rewrite_internal_links(md) == "[CDN](//cdn.example.com/page.html)"
+
+
+def test_protocol_relative_autolink_untouched():
+    md = "<//cdn.example.com/page.html>"
+    assert rewrite_internal_links(md) == "<//cdn.example.com/page.html>"
