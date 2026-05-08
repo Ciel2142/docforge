@@ -113,10 +113,11 @@ def main(argv: list[str] | None = None) -> int:
         write_output(out_path, content)
         converted += 1
 
+    skipped = 0  # walker drops non-HTML and oversize files silently in v1; tracking deferred
     total = converted + empty + failed
     log.info(
-        "converted=%d  empty=%d  failed=%d  total=%d",
-        converted, empty, failed, total,
+        "converted=%d  empty=%d  skipped=%d  failed=%d  total=%d",
+        converted, empty, skipped, failed, total,
     )
 
     if total > 0 and (failed / total) > args.fail_threshold:

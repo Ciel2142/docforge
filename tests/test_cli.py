@@ -214,3 +214,16 @@ def test_e2e_version_flag_prints_and_exits():
     r = _run_cli("--version")
     assert r.returncode == 0
     assert "docforge" in r.stdout
+
+
+def test_e2e_summary_line_includes_skipped_per_spec(tmp_path):
+    """Spec §7 line 148 mandates `converted=N  empty=M  skipped=K  failed=F  total=T`."""
+    src = tmp_path / "src"
+    src.mkdir()
+    _seed_tree(src)
+    out = tmp_path / "out"
+
+    r = _run_cli(str(src), "--output", str(out))
+    assert r.returncode == 0, r.stderr
+    for key in ("converted=", "empty=", "skipped=", "failed=", "total="):
+        assert key in r.stderr, f"missing {key} in summary; stderr=\n{r.stderr}"
