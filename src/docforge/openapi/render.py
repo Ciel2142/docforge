@@ -108,3 +108,57 @@ def render_endpoint(ep: Endpoint, *, spec_filename: str) -> str:
     while out and out[-1] == "":
         out.pop()
     return "\n".join(out) + "\n"
+
+
+import json as _json
+
+
+def _property_type(schema: dict[str, Any]) -> str:
+    if "$ref" in schema:
+        label, href = ref_link(schema["$ref"], from_kind="schema")
+        return f"[{label}]({href})"
+    if schema.get("type") == "array":
+        items = schema.get("items") or {}
+        return f"array of {_property_type(items)}"
+    return _type_str(schema)
+
+
+def render_schema(schema: Schema, *, spec_filename: str) -> str:
+    body = schema.body
+    out: list[str] = [
+        f"# {schema.name}",
+        "",
+        f"Source: {spec_filename}#/components/schemas/{schema.name}",
+        "",
+    ]
+    desc = (body.get("description") or "").strip()
+    if desc:
+        out.append(desc)
+        out.append("")
+
+    properties = body.get("properties") if body.get("type") == "object" else None
+    if properties:
+        required = set(body.get("required") or [])
+        out.extend([
+            "## Properties",
+            "",
+            "| Name | Type | Required | Description |",
+            "|------|------|----------|-------------|",
+        ])
+        for prop_name, prop in properties.items():
+            type_s = _property_type(prop or {})
+            req = "yes" if prop_name in required else "no"
+            pdesc = ((prop or {}).get("description") or "").replace("|", "\\|").replace("\n", " ")
+            out.append(f"| {prop_name} | {type_s} | {req} | {pdesc} |")
+        out.append("")
+    else:
+        out.append("## Definition")
+        out.append("")
+        out.append("```json")
+        out.append(_json.dumps(body, indent=2, ensure_ascii=False))
+        out.append("```")
+        out.append("")
+
+    while out and out[-1] == "":
+        out.pop()
+    return "\n".join(out) + "\n"

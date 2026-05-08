@@ -66,3 +66,46 @@ def test_render_endpoint_omits_empty_sections() -> None:
     assert "## Parameters" not in md
     assert "## Request Body" not in md
     assert "### 200 OK" in md
+
+
+def test_render_schema_header(petstore_spec: dict) -> None:
+    from docforge.openapi.iter import iter_schemas
+    from docforge.openapi.render import render_schema
+
+    schemas = {s.name: s for s in iter_schemas(petstore_spec)}
+    md = render_schema(schemas["Pet"], spec_filename="petstore-mini.json")
+    lines = md.splitlines()
+    assert lines[0] == "# Pet"
+    assert lines[2] == "Source: petstore-mini.json#/components/schemas/Pet"
+
+
+def test_render_schema_properties_table(petstore_spec: dict) -> None:
+    from docforge.openapi.iter import iter_schemas
+    from docforge.openapi.render import render_schema
+
+    schemas = {s.name: s for s in iter_schemas(petstore_spec)}
+    md = render_schema(schemas["Pet"], spec_filename="petstore-mini.json")
+    assert "## Properties" in md
+    assert "| id | string (uuid) | yes | Unique id |" in md
+    assert "| name | string | yes | Display name |" in md
+
+
+def test_render_schema_property_with_ref(petstore_spec: dict) -> None:
+    from docforge.openapi.iter import iter_schemas
+    from docforge.openapi.render import render_schema
+
+    schemas = {s.name: s for s in iter_schemas(petstore_spec)}
+    md = render_schema(schemas["Pet"], spec_filename="petstore-mini.json")
+    assert "| owner | [Owner](Owner.md) | no |" in md
+
+
+def test_render_schema_non_object_falls_back_to_definition_block() -> None:
+    from docforge.openapi.iter import Schema
+    from docforge.openapi.render import render_schema
+
+    s = Schema(name="Color", body={"type": "string", "enum": ["red", "green", "blue"]})
+    md = render_schema(s, spec_filename="x.json")
+    assert "# Color" in md
+    assert "## Definition" in md
+    assert "```json" in md
+    assert "\"enum\"" in md
