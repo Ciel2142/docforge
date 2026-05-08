@@ -200,3 +200,72 @@ def test_convert_html_emits_atx_headings_and_fenced_code():
     assert r.body_md.startswith("# T") or "\n# T" in r.body_md
     assert "```python" in r.body_md
     assert "x = 1" in r.body_md
+
+
+from pathlib import Path
+
+import pytest
+
+FIXTURES = Path(__file__).parent / "fixtures"
+EXPECTED = Path(__file__).parent / "expected"
+
+# Fixtures with golden output (status=OK).
+GOLDEN_CASES = [
+    "sphinx-method",
+    "sphinx-proto",
+    "sphinx-guide",
+    "sphinx-internal-link",
+    "sphinx-highlight-default",
+]
+
+# Fixtures expected to be classified EMPTY.
+EMPTY_CASES = [
+    "sphinx-empty-body",
+    "generic-no-articleBody",
+]
+
+
+@pytest.mark.parametrize("name", GOLDEN_CASES)
+def test_golden_match(name):
+    raw = (FIXTURES / f"{name}.html").read_text(encoding="utf-8", errors="replace")
+    r = convert_html(raw)
+    assert r.status == ConvertStatus.OK, f"got status {r.status} (error={r.error})"
+    expected = (EXPECTED / f"{name}.md").read_text(encoding="utf-8")
+    assert r.body_md.strip() == expected.strip()
+
+
+@pytest.mark.parametrize("name", EMPTY_CASES)
+def test_empty_classification(name):
+    raw = (FIXTURES / f"{name}.html").read_text(encoding="utf-8", errors="replace")
+    r = convert_html(raw)
+    assert r.status == ConvertStatus.EMPTY
+
+
+def test_non_utf8_does_not_crash():
+    raw = (FIXTURES / "non-utf8.html").read_bytes().decode("utf-8", errors="replace")
+    r = convert_html(raw)
+    assert r.status == ConvertStatus.OK
+    assert r.h1_text == "Bad"
+
+
+def test_full_pipeline_rewrites_internal_links_for_sphinx_internal_link_fixture():
+    """Spec §5 risk: full pipeline (convert_html → rewrite_internal_links) must
+    rewrite both markdown-form `[text](other.html)` and autolink-form `<bare.html>`
+    that Kreuzberg may emit when link text equals href. External https links stay."""
+    from docforge.links import rewrite_internal_links
+
+    raw = (FIXTURES / "sphinx-internal-link.html").read_text(encoding="utf-8")
+    r = convert_html(raw)
+    assert r.status == ConvertStatus.OK
+    final = rewrite_internal_links(r.body_md)
+
+    # Internal markdown-form link rewritten
+    assert "other.md" in final, f"expected other.md in:\n{final}"
+    assert "(other.html)" not in final and "<other.html>" not in final
+
+    # Internal bare-URL link rewritten (whatever form Kreuzberg picked)
+    assert "bare.md" in final, f"expected bare.md in:\n{final}"
+    assert "(bare.html)" not in final and "<bare.html>" not in final
+
+    # External link untouched
+    assert "https://example.com/page.html" in final
