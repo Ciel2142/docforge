@@ -1,4 +1,4 @@
-from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments
+from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments, _h1_text, _soup_title_text
 from bs4 import BeautifulSoup
 
 
@@ -119,3 +119,30 @@ def test_flatten_pygments_handles_nested_highlight_div_alone():
     code = pre.find("code")
     assert code is not None
     assert "x = 1" in code.get_text()
+
+
+def test_h1_text_strips_pilcrow():
+    s = _soup('<div><h1>Heading¶</h1></div>')
+    body = s.find("div")
+    assert _h1_text(body) == "Heading"
+
+
+def test_h1_text_returns_none_when_missing():
+    s = _soup('<div><p>no h1</p></div>')
+    body = s.find("div")
+    assert _h1_text(body) is None
+
+
+def test_soup_title_text_returns_inner_text():
+    s = _soup("<html><head><title>Page Title</title></head></html>")
+    assert _soup_title_text(s) == "Page Title"
+
+
+def test_soup_title_text_returns_none_when_missing():
+    s = _soup("<html><head></head></html>")
+    assert _soup_title_text(s) is None
+
+
+def test_soup_title_text_returns_none_when_blank():
+    s = _soup("<html><head><title>   </title></head></html>")
+    assert _soup_title_text(s) is None

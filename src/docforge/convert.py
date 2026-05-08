@@ -96,3 +96,19 @@ def _flatten_pygments(soup: BeautifulSoup, body: Tag) -> None:
             else wrapper
         )
         replace_target.replace_with(new_pre)
+
+
+def _h1_text(body: Tag) -> str | None:
+    h1 = body.find("h1")
+    if h1 is None:
+        return None
+    text = h1.get_text(strip=True).rstrip("¶").strip()
+    return text or None
+
+
+def _soup_title_text(soup: BeautifulSoup) -> str | None:
+    title = soup.find("title")
+    if title is None:
+        return None
+    text = title.get_text(strip=True)
+    return text or None
