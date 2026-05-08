@@ -3,6 +3,8 @@ import json
 import logging
 from pathlib import Path
 
+import yaml
+
 from .iter import iter_endpoints, iter_schemas
 from .loader import UnsupportedSpecError, load_spec
 from .paths import (
@@ -50,7 +52,7 @@ def run_openapi(args: argparse.Namespace) -> int:
     except UnsupportedSpecError as e:
         log.error("%s", e)
         return 2
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, yaml.YAMLError) as e:
         log.error("failed to parse %s: %s", spec_path, e)
         return 2
 

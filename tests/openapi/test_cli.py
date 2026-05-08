@@ -61,3 +61,17 @@ def test_top_level_help_lists_subcommands() -> None:
     assert result.returncode == 0
     assert "convert" in result.stdout
     assert "openapi" in result.stdout
+
+
+def test_openapi_subcommand_returns_2_on_yaml_parse_error(tmp_path: Path) -> None:
+    bad = tmp_path / "spec.yaml"
+    bad.write_text("foo: [unterminated\n", encoding="utf-8")
+    out = tmp_path / "out"
+    result = subprocess.run(
+        [sys.executable, "-m", "docforge", "openapi", str(bad), "--output", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "failed to parse" in result.stderr
