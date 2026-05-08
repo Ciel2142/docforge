@@ -213,6 +213,7 @@ EXPECTED = Path(__file__).parent / "expected"
 GOLDEN_CASES = [
     "sphinx-method",
     "sphinx-proto",
+    "sphinx-proto-blockquote",
     "sphinx-guide",
     "sphinx-internal-link",
     "sphinx-highlight-default",
