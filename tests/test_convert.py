@@ -1,4 +1,5 @@
-from docforge.convert import ConvertResult, ConvertStatus
+from docforge.convert import ConvertResult, ConvertStatus, _select_body
+from bs4 import BeautifulSoup
 
 
 def test_status_enum_has_three_values():
@@ -11,3 +12,37 @@ def test_default_result_fields_are_none():
     assert r.h1_text is None
     assert r.soup_title_text is None
     assert r.error is None
+
+
+def _soup(html: str):
+    return BeautifulSoup(html, "lxml")
+
+
+def test_select_body_finds_articleBody_directly():
+    s = _soup('<html><body><div itemprop="articleBody"><h1>X</h1></div></body></html>')
+    body = _select_body(s)
+    assert body is not None
+    assert body.find("h1").get_text() == "X"
+
+
+def test_select_body_finds_articleBody_inside_main():
+    html = (
+        '<html><body><div role="main">'
+        '<div itemprop="articleBody"><h1>Y</h1></div>'
+        "</div></body></html>"
+    )
+    body = _select_body(_soup(html))
+    assert body is not None
+    assert body.find("h1").get_text() == "Y"
+
+
+def test_select_body_returns_main_when_no_articleBody():
+    html = '<html><body><div role="main"><h1>Z</h1></div></body></html>'
+    body = _select_body(_soup(html))
+    assert body is not None
+    assert body.find("h1").get_text() == "Z"
+
+
+def test_select_body_returns_none_when_neither_present():
+    html = "<html><body><main><h1>Q</h1></main></body></html>"
+    assert _select_body(_soup(html)) is None
