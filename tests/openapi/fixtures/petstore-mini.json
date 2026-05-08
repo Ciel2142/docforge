@@ -1,0 +1,124 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Petstore Mini",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/pets": {
+      "get": {
+        "tags": ["pets"],
+        "summary": "List pets",
+        "description": "Returns all pets currently in the store.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "format": "int32"},
+            "description": "Maximum items to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/Pet"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["pets"],
+        "summary": "Create pet",
+        "description": "Adds a new pet.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/NewPet"}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Pet"}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Error"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pets/{id}": {
+      "get": {
+        "tags": ["pets"],
+        "summary": "Get pet by id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Pet"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid", "description": "Unique id"},
+          "name": {"type": "string", "description": "Display name"},
+          "owner": {"$ref": "#/components/schemas/Owner"}
+        }
+      },
+      "NewPet": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "description": "Display name"}
+        }
+      },
+      "Owner": {
+        "type": "object",
+        "properties": {
+          "email": {"type": "string", "format": "email"}
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": {"type": "string"}
+        }
+      }
+    }
+  }
+}
