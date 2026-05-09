@@ -58,3 +58,22 @@ export function detectCollisions(
 
   return mapping;
 }
+
+export type ReportStatus = "ok" | "empty" | "failed" | "skipped";
+
+export interface ReportEntry {
+  input: string;
+  output: string | null;
+  status: ReportStatus;
+  error?: string;
+}
+
+export interface Report {
+  entries: ReportEntry[];
+}
+
+export function writeReportJson(path: string, entries: ReportEntry[]): void {
+  const report: Report = { entries };
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(report, null, 2), "utf8");
+}

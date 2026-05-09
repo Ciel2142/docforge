@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildOutput, writeOutput, detectCollisions, CollisionError } from "../src/output.js";
+import { buildOutput, writeOutput, detectCollisions, CollisionError, writeReportJson } from "../src/output.js";
 
 let tmp: string;
 beforeEach(() => {
@@ -89,5 +89,20 @@ describe("detectCollisions", () => {
     expect(() =>
       detectCollisions(["/src/page.html", "/src/page.htm"], "/src", "/out"),
     ).toThrow(CollisionError);
+  });
+});
+
+describe("writeReportJson", () => {
+  test("writes per-file report as pretty json", () => {
+    const out = join(tmp, "report.json");
+    writeReportJson(out, [
+      { input: "a.html", output: "a.md", status: "ok" },
+      { input: "b.html", output: null, status: "empty" },
+      { input: "c.html", output: null, status: "failed", error: "boom" },
+    ]);
+    const parsed = JSON.parse(readFileSync(out, "utf8"));
+    expect(parsed.entries).toHaveLength(3);
+    expect(parsed.entries[1].status).toBe("empty");
+    expect(parsed.entries[2].error).toBe("boom");
   });
 });
