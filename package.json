@@ -1,0 +1,29 @@
+{
+  "name": "docforge",
+  "version": "0.4.0",
+  "description": "Convert documentation sources to Markdown for RAG ingestion.",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "docforge": "dist/bin.js" },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/bin.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kreuzberg/node": "^4",
+    "cheerio": "^1",
+    "commander": "^13",
+    "js-yaml": "^4"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4",
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.7",
+    "vitest": "^2"
+  },
+  "engines": { "node": ">=20" }
+}
