@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { load } from "cheerio";
 import {
@@ -119,5 +121,53 @@ describe("convertHtml result type", () => {
     if (r.status === "failed") expect(r.error).toMatch(/kreuzberg/);
     vi.doUnmock("@kreuzberg/node");
     vi.resetModules();
+  });
+});
+
+const FIXTURES = "tests/fixtures";
+const EXPECTED = "tests/expected";
+
+const GOLDEN_CASES = [
+  "sphinx-method",
+  "sphinx-proto",
+  "sphinx-proto-blockquote",
+  "sphinx-guide",
+  "sphinx-internal-link",
+  "sphinx-highlight-default",
+];
+
+const EMPTY_CASES = ["sphinx-empty-body", "generic-no-articleBody"];
+
+describe("golden files", () => {
+  for (const name of GOLDEN_CASES) {
+    test(`golden: ${name}`, () => {
+      const raw = readFileSync(join(FIXTURES, `${name}.html`), "utf8");
+      const r = convertHtml(raw);
+      expect(r.status).toBe("ok");
+      if (r.status === "ok") {
+        const expected = readFileSync(join(EXPECTED, `${name}.md`), "utf8");
+        expect(r.body_md.trim()).toBe(expected.trim());
+      }
+    });
+  }
+});
+
+describe("empty classification", () => {
+  for (const name of EMPTY_CASES) {
+    test(`empty: ${name}`, () => {
+      const raw = readFileSync(join(FIXTURES, `${name}.html`), "utf8");
+      const r = convertHtml(raw);
+      expect(r.status).toBe("empty");
+    });
+  }
+});
+
+describe("non-utf8 fixture", () => {
+  test("does not crash and converts via replacement", () => {
+    const buf = readFileSync(join(FIXTURES, "non-utf8.html"));
+    const raw = buf.toString("utf8"); // Node default replaces invalid bytes
+    const r = convertHtml(raw);
+    expect(r.status).toBe("ok");
+    if (r.status === "ok") expect(r.h1_text).toBe("Bad");
   });
 });
