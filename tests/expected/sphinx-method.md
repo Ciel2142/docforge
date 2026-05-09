@@ -4,12 +4,11 @@ Send an invitation to add the organization as a counteragent.
 
 ## Request
 
-```http
+```
 POST /AcquireCounteragent HTTP/1.1
 Authorization: DiadocAuth ddauth_api_client_id=...
 
 ```
-
 
 ## Parameters
 
