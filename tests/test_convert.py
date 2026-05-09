@@ -1,4 +1,4 @@
-from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _flatten_pygments, _h1_text, _soup_title_text, convert_html
+from docforge.convert import ConvertResult, ConvertStatus, _select_body, _strip_sphinx_noise, _h1_text, _soup_title_text, convert_html
 from bs4 import BeautifulSoup
 
 
@@ -75,52 +75,6 @@ def test_strip_leaves_normal_anchors_alone():
     assert body.find("a").get_text() == "Other"
 
 
-def test_flatten_pygments_with_language():
-    html = (
-        '<div class="highlight-python"><div class="highlight"><pre>'
-        '<span class="kn">def</span> <span class="nf">foo</span>():\n'
-        "    pass\n"
-        "</pre></div></div>"
-    )
-    s = _soup(f"<div>{html}</div>")
-    body = s.find("div")
-    _flatten_pygments(s, body)
-    pre = body.find("pre")
-    code = pre.find("code")
-    assert code is not None
-    assert code.get("class") == ["language-python"]
-    assert "def foo()" in code.get_text()
-
-
-def test_flatten_pygments_with_highlight_default_emits_no_language():
-    html = (
-        '<div class="highlight-default"><div class="highlight"><pre>'
-        "<span>plain text</span>\n</pre></div></div>"
-    )
-    s = _soup(f"<div>{html}</div>")
-    body = s.find("div")
-    _flatten_pygments(s, body)
-    pre = body.find("pre")
-    code = pre.find("code")
-    assert code is not None
-    assert code.get("class") is None or code.get("class") == []
-    assert "plain text" in code.get_text()
-
-
-def test_flatten_pygments_handles_nested_highlight_div_alone():
-    html = (
-        '<div class="highlight"><pre>'
-        "<span>x = 1</span>\n</pre></div>"
-    )
-    s = _soup(f"<div>{html}</div>")
-    body = s.find("div")
-    _flatten_pygments(s, body)
-    pre = body.find("pre")
-    code = pre.find("code")
-    assert code is not None
-    assert "x = 1" in code.get_text()
-
-
 def test_h1_text_strips_pilcrow():
     s = _soup('<div><h1>Heading¶</h1></div>')
     body = s.find("div")
@@ -176,7 +130,7 @@ def test_convert_html_returns_failed_on_exception(monkeypatch):
     def boom(*a, **kw):
         raise RuntimeError("kreuzberg blew up")
 
-    monkeypatch.setattr(mod.html_to_markdown, "convert", boom)
+    monkeypatch.setattr(mod, "extract_bytes_sync", boom)
     html = (
         '<html><body><div itemprop="articleBody"><h1>X</h1></div></body></html>'
     )
@@ -184,22 +138,6 @@ def test_convert_html_returns_failed_on_exception(monkeypatch):
     assert r.status == ConvertStatus.FAILED
     assert r.error is not None
     assert "kreuzberg" in r.error
-
-
-def test_convert_html_emits_atx_headings_and_fenced_code():
-    html = (
-        '<html><body><div itemprop="articleBody">'
-        '<h1>T</h1>'
-        '<div class="highlight-python"><div class="highlight"><pre>'
-        '<span>x = 1</span>'
-        '</pre></div></div>'
-        '</div></body></html>'
-    )
-    r = convert_html(html)
-    assert r.status == ConvertStatus.OK
-    assert r.body_md.startswith("# T") or "\n# T" in r.body_md
-    assert "```python" in r.body_md
-    assert "x = 1" in r.body_md
 
 
 from pathlib import Path

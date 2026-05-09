@@ -179,7 +179,7 @@ def test_e2e_threshold_breached_exits_1(tmp_path):
         import docforge.convert as c
         def boom(*a, **kw):
             raise RuntimeError("forced failure")
-        c.html_to_markdown.convert = boom
+        c.extract_bytes_sync = boom
         from docforge.cli import main
         sys.exit(main(["convert"] + sys.argv[1:]))
         """), encoding="utf-8")
