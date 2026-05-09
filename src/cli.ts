@@ -16,6 +16,7 @@ import {
 } from "./output.js";
 import { iterHtmlFiles } from "./walk.js";
 import { log, setLevel } from "./log.js";
+import { registerOpenapiSubcommand } from "./openapi/cli.js";
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -52,6 +53,8 @@ export function buildProgram(): Command {
       const code = await runConvert(source, opts);
       if (code !== 0) process.exit(code);
     });
+
+  registerOpenapiSubcommand(program);
 
   return program;
 }
