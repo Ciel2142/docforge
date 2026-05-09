@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/bin.ts",
+    "pretest": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
