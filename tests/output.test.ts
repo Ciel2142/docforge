@@ -34,6 +34,36 @@ describe("buildOutput", () => {
     const out = buildOutput("Заголовок", "ru.html", "Текст");
     expect(out.startsWith("# Заголовок\n")).toBe(true);
   });
+
+  test("hoists body H1 when present, dropping title arg", () => {
+    expect(buildOutput("ignored", "p.html", "# Body Heading\n\nPara.")).toBe(
+      "# Body Heading\n\nSource: p.html\n\nPara.\n",
+    );
+  });
+
+  test("body H1 differing from title still wins", () => {
+    expect(buildOutput("Title Arg", "p.html", "# Other Heading\n\nText.")).toBe(
+      "# Other Heading\n\nSource: p.html\n\nText.\n",
+    );
+  });
+
+  test("body that is only an H1 produces single-heading output", () => {
+    expect(buildOutput("ignored", "p.html", "# Only Heading")).toBe(
+      "# Only Heading\n\nSource: p.html\n",
+    );
+  });
+
+  test("body starting with H2 falls back to title-prefix path", () => {
+    expect(buildOutput("Title", "p.html", "## Sub\n\nBody.")).toBe(
+      "# Title\n\nSource: p.html\n\n## Sub\n\nBody.\n",
+    );
+  });
+
+  test("body H1 with surrounding whitespace still hoists", () => {
+    expect(buildOutput("ignored", "p.html", "\n\n# Heading\n\nPara.\n")).toBe(
+      "# Heading\n\nSource: p.html\n\nPara.\n",
+    );
+  });
 });
 
 describe("writeOutput", () => {

@@ -6,7 +6,17 @@ export function buildOutput(
   sourceRelpath: string,
   bodyMd: string,
 ): string {
-  return `# ${title}\n\nSource: ${sourceRelpath}\n\n${bodyMd.trim()}\n`;
+  const trimmed = bodyMd.trim();
+  const newlineIdx = trimmed.indexOf("\n");
+  const firstLine = newlineIdx >= 0 ? trimmed.slice(0, newlineIdx) : trimmed;
+  if (firstLine.startsWith("# ")) {
+    const rest = newlineIdx >= 0
+      ? trimmed.slice(newlineIdx + 1).replace(/^\n+/, "")
+      : "";
+    const tail = rest ? `\n\n${rest}` : "";
+    return `${firstLine}\n\nSource: ${sourceRelpath}${tail}\n`;
+  }
+  return `# ${title}\n\nSource: ${sourceRelpath}\n\n${trimmed}\n`;
 }
 
 export function writeOutput(outPath: string, content: string): void {
