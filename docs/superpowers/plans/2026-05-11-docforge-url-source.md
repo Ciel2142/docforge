@@ -6,7 +6,7 @@
 
 **Architecture:** Introduce a `Source` interface yielding `AsyncIterable<SourceItem>`. `FilesystemSource` wraps the existing `walk.ts`; `HttpSource` does sitemap-first discovery with BFS fallback, ETag-cached fetches via `got`, and robots.txt-aware boundary. The `convert` loop becomes source-agnostic. The `openapi` loader gains a one-shot `fetchUrl()` path.
 
-**Tech Stack:** Node 20+, TypeScript strict, ESM. New deps: `got` 15 (HTTP), `cacheable-request` 13 + `keyv` 5 + `@keyv/file` (RFC 9111 disk cache), `sitemapper` 4, `@crawlee/utils` (RobotsTxtFile only), `p-queue` 9. Existing: `cheerio`, `commander`, `js-yaml`, `@kreuzberg/node` ^4. Spec: `docs/superpowers/specs/2026-05-11-docforge-url-source-design.md`.
+**Tech Stack:** Node 20+, TypeScript strict, ESM. New deps: `got` 15 (HTTP), `cacheable-request` 13 + `keyv` 5 + `keyv-file` 5 (RFC 9111 disk cache), `sitemapper` 4, `@crawlee/utils` (RobotsTxtFile only), `p-queue` 9. Existing: `cheerio`, `commander`, `js-yaml`, `@kreuzberg/node` ^4. Spec: `docs/superpowers/specs/2026-05-11-docforge-url-source-design.md`.
 
 **Test layout note:** project uses flat `tests/*.test.ts` (not `tests/unit/` or `tests/integration/`). Plan paths follow that convention; helpers live under `tests/helpers/`.
 
@@ -64,7 +64,7 @@
 
 Run:
 ```bash
-npm install got@^15 cacheable-request@^13 keyv@^5 @keyv/file@^1 sitemapper@^4 @crawlee/utils@^3 p-queue@^9
+npm install got@^15 cacheable-request@^13 keyv@^5 keyv-file@^5 sitemapper@^4 @crawlee/utils@^3 p-queue@^9
 ```
 
 Expected: dependencies added to `package.json`, no peer warnings.
@@ -412,7 +412,7 @@ Create `src/http/fetch.ts`:
 import { join } from "node:path";
 import got, { type Got, type OptionsOfTextResponseBody, RequestError, HTTPError, TimeoutError } from "got";
 import Keyv from "keyv";
-import KeyvFile from "@keyv/file";
+import KeyvFile from "keyv-file";
 
 export class FetchError extends Error {
   public status: number | null;

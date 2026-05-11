@@ -32,7 +32,7 @@ The polymorphic `<source>` argument detects URL vs filesystem path. Filesystem b
 |---|---|---|
 | HTTP client | `got` 15 | ESM-native, retry + hooks built-in, integrates `cacheable-request` for ETag/304 via the `cache:` option |
 | RFC 9111 cache | `cacheable-request` 13 | Standards-compliant cache layer; pluggable Keyv backend |
-| Cache store | `keyv` + `@keyv/file` | Filesystem-backed Keyv adapter → writes to `~/.cache/docforge` |
+| Cache store | `keyv` + `keyv-file` | Filesystem-backed Keyv adapter → writes to `~/.cache/docforge` (NB: package is `keyv-file` unscoped, not `@keyv/file`; the latter does not exist on npm) |
 | Sitemap parser | `sitemapper` 4 | Tiny, handles sitemap-index recursion + gzipped sitemaps, last release May 2026 |
 | Robots parser | `@crawlee/utils` (`RobotsTxtFile` only) | Active 2026 maintenance; `robots-parser` is stale since 2023 |
 | Concurrency | `p-queue` 9 | Promise queue with `concurrency`, `interval`, `intervalCap`; clean fit for honoring `Crawl-delay` |
@@ -46,7 +46,7 @@ Updated `package.json` `dependencies`:
 {
   "@kreuzberg/node": "^4",
   "@crawlee/utils": "^3.16",
-  "@keyv/file": "^1",
+  "keyv-file": "^5",
   "cacheable-request": "^13",
   "cheerio": "^1",
   "commander": "^13",
@@ -323,7 +323,7 @@ Content-type sniff: `application/json` → `JSON.parse`; else `js-yaml.load` (ma
 
 ### 7.3 Cache lifecycle
 
-- got + cacheable-request + `@keyv/file` store at `<cacheDir>/responses.json` (or directory-of-files store — `@keyv/file` default).
+- got + cacheable-request + `keyv-file` store at `<cacheDir>/responses.json` (msgpack-encoded file; `keyv-file` default).
 - Key: full URL after normalization.
 - Value: `{ etag, lastModified, body, headers, expiry }` per RFC 9111.
 - On rerun: cache layer sends `If-None-Match` / `If-Modified-Since`; server 304 → cached body returned, `fromCache: true` in debug log.
@@ -479,7 +479,7 @@ None at spec time. All design decisions resolved during brainstorm:
 6. No auth in v1 — resolved.
 7. URL→path = mirror — resolved.
 8. HTML→MD engine stays `@kreuzberg/node` ^4 — resolved.
-9. Dep stack: got + sitemapper + @crawlee/utils + p-queue + cacheable-request + @keyv/file + keyv — resolved.
+9. Dep stack: got + sitemapper + @crawlee/utils + p-queue + cacheable-request + keyv-file + keyv — resolved.
 
 ## 11. Follow-ups (separate issues, not this spec)
 
