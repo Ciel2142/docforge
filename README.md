@@ -24,6 +24,24 @@ docforge openapi ./api.yaml --output ./api-md
 
 See `docforge --help` and `docforge <command> --help` for all flags.
 
+### URL sources
+
+`<source>` and `<spec>` accept HTTP(S) URLs. For `convert`, docforge attempts
+sitemap discovery first (robots.txt `Sitemap:` directives, then `/sitemap.xml`,
+then `/sitemap_index.xml`) and falls back to a BFS crawl bounded by
+`--max-pages` / `--max-depth` and the seed origin. `robots.txt` is honored.
+
+```bash
+docforge convert https://docs.example.com/ --output ./md
+docforge openapi https://api.example.com/openapi.yaml --output ./api-md
+```
+
+URL-only flags: `--max-pages` (5000), `--max-depth` (10), `--concurrency` (4),
+`--cache-dir` (`~/.cache/docforge`), `--no-cache`, `--user-agent`.
+
+Responses are cached on disk with ETag/Last-Modified revalidation so repeat
+runs are cheap.
+
 ## Development
 
 ```bash
