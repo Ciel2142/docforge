@@ -69,6 +69,14 @@ function defaultPort(proto: string, port: string): boolean {
   return (proto === "http:" && port === "80") || (proto === "https:" && port === "443");
 }
 
+/** Pure helper: resolve kind from a URL based on pathname suffix alone. */
+export function resolveKindFromUrl(url: string): CorpusKind {
+  const path = new URL(url).pathname;
+  const last = path.split("/").filter(Boolean).pop() ?? "";
+  if (/\.(html?|md|txt|json|ya?ml)$/i.test(last)) return "page";
+  return "site";
+}
+
 async function resolveKind(args: ConvertArgs, userAgent: string): Promise<CorpusKind> {
   if (args.kind && args.kind !== "auto") return args.kind;
   const mode = args.llms_full ?? "auto";
@@ -88,10 +96,7 @@ async function resolveKind(args: ConvertArgs, userAgent: string): Promise<Corpus
       );
     }
   }
-  const path = new URL(args.url).pathname;
-  const last = path.split("/").filter(Boolean).pop() ?? "";
-  if (/\.(html?|md|txt|json|ya?ml)$/i.test(last)) return "page";
-  return "site";
+  return resolveKindFromUrl(args.url);
 }
 
 function listPages(collectionDir: string): Array<{ rel_path: string; bytes: number }> {
@@ -121,8 +126,12 @@ function pickPreviewPath(pages: Array<{ rel_path: string }>): string | null {
 
 function readTitle(absPath: string): string {
   const head = readFileSync(absPath, "utf8").slice(0, 4096);
-  const m = head.match(/^---\s*\ntitle:\s*"?([^"\n]+)"?\s*\n/);
-  return m?.[1]?.trim() ?? "";
+  // Match title: anywhere inside the leading frontmatter block.
+  const m = head.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!m) return "";
+  const fm = m[1] ?? "";
+  const t = fm.match(/^title:\s*"?([^"\n]+?)"?\s*$/m);
+  return t?.[1]?.trim() ?? "";
 }
 
 export const convertTool: ToolDefinition = {
@@ -167,6 +176,18 @@ export const convertTool: ToolDefinition = {
 
     const release = await ctx.locks.acquire(ctx.config.qmdRoot, collection);
     try {
+      // Re-read manifest inside the lock to close the TOCTOU race on SOURCE_MISMATCH.
+      const lockedExisting = readManifest(paths.final);
+      if (lockedExisting && !args.force_refresh) {
+        if (normaliseUrlForCompare(lockedExisting.source_url) !== normaliseUrlForCompare(args.url)) {
+          throw new McpError(
+            "SOURCE_MISMATCH",
+            `collection "${collection}" already exists for ${lockedExisting.source_url}`,
+            "pass force_refresh=true to overwrite, or use a different corpus name",
+          );
+        }
+      }
+
       if (existsSync(paths.tmp)) rmSync(paths.tmp, { recursive: true, force: true });
       mkdirSync(paths.tmp, { recursive: true });
 
@@ -219,7 +240,12 @@ export const convertTool: ToolDefinition = {
         docforge_version: VERSION,
       };
       writeManifest(paths.tmp, manifest);
-      commitTmpToFinal(paths);
+      try {
+        commitTmpToFinal(paths);
+      } catch (e) {
+        rmSync(paths.tmp, { recursive: true, force: true });
+        throw new McpError("WRITE_FAILED", (e as Error).message);
+      }
 
       const previewPath = pickPreviewPath(pages);
       const previewLimit = clampPreviewBytes(args.preview_bytes);

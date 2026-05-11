@@ -2,10 +2,10 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { convertTool } from "../../src/mcp/tools/convert.js";
+import { convertTool, resolveKindFromUrl } from "../../src/mcp/tools/convert.js";
 import { LockManager } from "../../src/mcp/locks.js";
 import { McpError } from "../../src/mcp/errors.js";
-import { MANIFEST_FILE, readManifest } from "../../src/mcp/manifest.js";
+import { readManifest } from "../../src/mcp/manifest.js";
 import { startStub, type StubServer } from "./helpers/http-stub.js";
 
 let qmdRoot: string;
@@ -115,5 +115,48 @@ describe("convert tool", () => {
     await expect(
       convertTool.handler({ url: stub.url, llms_full: "force" }, ctx())
     ).rejects.toMatchObject({ code: "LLMS_FULL_MISSING" });
+  });
+});
+
+describe("resolveKindFromUrl (pure unit)", () => {
+  test(".yaml suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/spec.yaml")).toBe("page");
+  });
+
+  test(".yml suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/openapi.yml")).toBe("page");
+  });
+
+  test(".html suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/guide.html")).toBe("page");
+  });
+
+  test(".htm suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/index.htm")).toBe("page");
+  });
+
+  test(".md suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/README.md")).toBe("page");
+  });
+
+  test(".txt suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/llms.txt")).toBe("page");
+  });
+
+  test(".json suffix → page", () => {
+    expect(resolveKindFromUrl("http://example.com/data.json")).toBe("page");
+  });
+
+  test("trailing slash → site", () => {
+    expect(resolveKindFromUrl("http://example.com/")).toBe("site");
+  });
+
+  test("no suffix (directory-like) → site", () => {
+    expect(resolveKindFromUrl("http://example.com/docs/guide")).toBe("site");
+  });
+
+  test("suffix matching is case-insensitive", () => {
+    expect(resolveKindFromUrl("http://example.com/spec.YAML")).toBe("page");
+    expect(resolveKindFromUrl("http://example.com/page.HTML")).toBe("page");
   });
 });
