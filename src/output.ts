@@ -73,6 +73,7 @@ export type ReportStatus = "ok" | "empty" | "failed" | "skipped";
 
 export interface ReportEntry {
   input: string;
+  srcUri: string;
   output: string | null;
   status: ReportStatus;
   error?: string;
@@ -87,3 +88,5 @@ export function writeReportJson(path: string, entries: ReportEntry[]): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(report, null, 2), "utf8");
 }
+
+export { urlToOutputPath } from "./http/url.js";

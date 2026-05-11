@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildOutput, writeOutput, detectCollisions, CollisionError, writeReportJson } from "../src/output.js";
+import { buildOutput, writeOutput, detectCollisions, CollisionError, writeReportJson, type ReportEntry } from "../src/output.js";
 
 let tmp: string;
 beforeEach(() => {
@@ -126,13 +126,35 @@ describe("writeReportJson", () => {
   test("writes per-file report as pretty json", () => {
     const out = join(tmp, "report.json");
     writeReportJson(out, [
-      { input: "a.html", output: "a.md", status: "ok" },
-      { input: "b.html", output: null, status: "empty" },
-      { input: "c.html", output: null, status: "failed", error: "boom" },
+      { input: "a.html", srcUri: "", output: "a.md", status: "ok" },
+      { input: "b.html", srcUri: "", output: null, status: "empty" },
+      { input: "c.html", srcUri: "", output: null, status: "failed", error: "boom" },
     ]);
     const parsed = JSON.parse(readFileSync(out, "utf8"));
     expect(parsed.entries).toHaveLength(3);
     expect(parsed.entries[1].status).toBe("empty");
     expect(parsed.entries[2].error).toBe("boom");
+  });
+});
+
+describe("ReportEntry srcUri", () => {
+  test("writeReportJson persists srcUri", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "df-report-"));
+    try {
+      const entries: ReportEntry[] = [
+        {
+          input: "guide/foo.html",
+          srcUri: "https://x.com/guide/foo.html",
+          output: "/out/guide/foo.md",
+          status: "ok",
+        },
+      ];
+      const p = join(tmp, "r.json");
+      writeReportJson(p, entries);
+      const parsed = JSON.parse(readFileSync(p, "utf8"));
+      expect(parsed.entries[0].srcUri).toBe("https://x.com/guide/foo.html");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
