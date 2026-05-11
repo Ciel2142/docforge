@@ -1,6 +1,6 @@
-# Quickstart
-
 Connect to the Diadoc API in five steps.
+
+
 
 1. Register a client at the partner portal.
 2. Obtain an API client id.

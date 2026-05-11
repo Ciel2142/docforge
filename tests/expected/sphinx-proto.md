@@ -1,9 +1,12 @@
-# Address
+## Address
+
+
 
 Universal address record covering Russian and foreign forms.
 
-- **RussianAddress**
-  * ZipCode — postal code
+
+
+- **RussianAddress**   * ZipCode — postal code
   * Region — federal subject code
   * Territory — district / municipality
   * City — city or town
@@ -16,5 +19,3 @@ Universal address record covering Russian and foreign forms.
   * OkatoCode — OKATO code
   * OktmoCode — OKTMO code
 - **ForeignAddress**
-  * CountryCode — ISO country code
-  * Address — full address line

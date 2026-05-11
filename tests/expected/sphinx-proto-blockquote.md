@@ -1,8 +1,15 @@
-# Address
+## Address
+
+
 
 Universal address record covering Russian and foreign forms.
 
+
+
 - **RussianAddress** — Russian address structure with fields:
+
+
+
 > * ZipCode — postal code
 >
 > * Region — federal subject code
@@ -28,6 +35,3 @@ Universal address record covering Russian and foreign forms.
 > * OktmoCode — OKTMO code
 
 - **ForeignAddress** — foreign address structure with fields:
-> * CountryCode — ISO country code
->
-> * Address — full address line
