@@ -3,9 +3,8 @@ import { basename, resolve } from "node:path";
 
 import type { FetchOptions } from "../http/fetch.js";
 import { iterEndpoints, iterSchemas } from "./iter.js";
-import { UnsupportedSpecError, loadSpec, loadSpecFromUrl } from "./loader.js";
+import { loadSpec, loadSpecFromUrl } from "./loader.js";
 import {
-  SlugCollisionError,
   detectEndpointCollisions,
   endpointFilename,
   schemaFilename,
@@ -19,13 +18,14 @@ export interface RunOpenapiPipelineOptions {
   outputDir: string;
   /** Fetch options used only when source is a URL. */
   fetchOptions?: FetchOptions;
+  /** Optional pre-parsed spec; if present, the internal load step is skipped. */
+  spec?: Record<string, unknown>;
 }
 
 export interface OpenapiPipelineResult {
   endpoints: number;
   schemas: number;
   specFilename: string;
-  spec: Record<string, unknown>;
 }
 
 function isUrl(s: string): boolean {
@@ -40,7 +40,12 @@ export async function runOpenapiPipeline(
   let spec: Record<string, unknown>;
   let specFilename: string;
 
-  if (isUrl(source)) {
+  if (opts.spec) {
+    spec = opts.spec;
+    specFilename = isUrl(source)
+      ? basename(new URL(source).pathname) || "openapi"
+      : basename(resolve(source));
+  } else if (isUrl(source)) {
     const fetchOpts: FetchOptions = fetchOptions ?? {
       userAgent: "docforge",
       timeoutMs: 30_000,
@@ -79,8 +84,5 @@ export async function runOpenapiPipeline(
     endpoints: endpoints.length,
     schemas: schemas.length,
     specFilename,
-    spec,
   };
 }
-
-export { UnsupportedSpecError, SlugCollisionError };

@@ -121,9 +121,10 @@ export const convertOpenapiTool: ToolDefinition = {
     };
 
     let openApiInfo: { title: string; version?: string } | undefined;
+    let parsedSpec: Record<string, unknown>;
     try {
-      const spec = await loadSpecRef(specRef, isUrl(specRef), fetchOpts);
-      const info = spec["info"];
+      parsedSpec = await loadSpecRef(specRef, isUrl(specRef), fetchOpts);
+      const info = parsedSpec["info"];
       if (info && typeof info === "object") {
         const infoObj = info as Record<string, unknown>;
         const title = infoObj["title"];
@@ -171,7 +172,7 @@ export const convertOpenapiTool: ToolDefinition = {
       mkdirSync(paths.tmp, { recursive: true });
 
       try {
-        await runOpenapiPipeline({ source: specRef, outputDir: paths.tmp, fetchOptions: fetchOpts });
+        await runOpenapiPipeline({ source: specRef, outputDir: paths.tmp, fetchOptions: fetchOpts, spec: parsedSpec });
       } catch (e) {
         rmSync(paths.tmp, { recursive: true, force: true });
         throw new McpError("OPENAPI_PARSE", (e as Error).message);
