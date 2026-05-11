@@ -1,6 +1,6 @@
 import { extractBytesSync, type ExtractionConfig } from "@kreuzberg/node";
 import { parseHTML } from "linkedom";
-import { extractMainContent } from "./extract.js";
+import { extractMainContent, type ExtractOptions } from "./extract.js";
 
 const KZ_CONFIG: ExtractionConfig = {
   useCache: false,
@@ -49,7 +49,7 @@ export async function convertHtml(
   opts: ConvertOptions = {},
 ): Promise<ConvertResult> {
   try {
-    const extractOpts: { selector?: string; url?: string } = {};
+    const extractOpts: ExtractOptions = {};
     if (opts.selector !== undefined) extractOpts.selector = opts.selector;
     if (opts.url !== undefined) extractOpts.url = opts.url;
     const extracted = await extractMainContent(rawHtml, extractOpts);
