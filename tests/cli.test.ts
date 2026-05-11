@@ -107,7 +107,7 @@ function seedTree(root: string): void {
   mkdirSync(root, { recursive: true });
   writeFileSync(
     join(root, "page1.html"),
-    makeSphinx("Page 1", "<h1>Page 1</h1><p>Hello.</p>"),
+    makeSphinx("Page 1", "<h1>Page 1</h1><p>Hello. This page covers the first topic in detail.</p>"),
     "utf8",
   );
   mkdirSync(join(root, "sub"), { recursive: true });
@@ -115,7 +115,7 @@ function seedTree(root: string): void {
     join(root, "sub", "page2.html"),
     makeSphinx(
       "Page 2",
-      '<h1>Page 2</h1><p>See <a href="../page1.html">first</a>.</p>',
+      '<h1>Page 2</h1><p>See <a href="../page1.html">first</a> for background on this topic.</p>',
     ),
     "utf8",
   );

@@ -22,14 +22,20 @@ export interface ConvertOptions {
   url?: string;
 }
 
-function extractH1(rawHtml: string): string | null {
+function extractH1(rawHtml: string, selector?: string): string | null {
   const { document } = parseHTML(rawHtml);
-  // Prefer articleBody scope → role=main → main → body, in that priority order.
+  // When a CSS selector override is active, scope H1 lookup to that element.
+  // Otherwise prefer articleBody scope → role=main → main → body, in that priority order.
   // We extract from rawHtml (before Defuddle) because Defuddle demotes H1→H2 in cleanedHtml.
-  const articleBody = document.querySelector('[itemprop="articleBody"]');
-  const main =
-    document.querySelector('[role="main"]') ?? document.querySelector("main");
-  const scope = articleBody ?? main ?? document.body;
+  let scope: Element | null | undefined;
+  if (selector !== undefined) {
+    scope = document.querySelector(selector);
+  } else {
+    const articleBody = document.querySelector('[itemprop="articleBody"]');
+    const main =
+      document.querySelector('[role="main"]') ?? document.querySelector("main");
+    scope = articleBody ?? main ?? document.body;
+  }
   const h1 = scope?.querySelector("h1");
   if (!h1) return null;
   const text = (h1.textContent ?? "").trim().replace(/¶+$/u, "").trim();
@@ -56,7 +62,7 @@ export async function convertHtml(
     if (extracted.status === "empty") return { status: "empty" };
 
     const soupTitle = extractTitle(rawHtml);
-    const h1 = extractH1(rawHtml);
+    const h1 = extractH1(rawHtml, opts.selector);
 
     const result = extractBytesSync(
       Buffer.from(extracted.cleanedHtml, "utf8"),

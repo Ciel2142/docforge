@@ -40,6 +40,7 @@ describe("ETag 304 cache reuse", () => {
       cacheDir,
       cache: true,
       userAgent: "docforge-test/0",
+      llmsFull: "auto",
     };
 
     expect(await runConvert(`${srv.baseUrl}/`, opts)).toBe(0);

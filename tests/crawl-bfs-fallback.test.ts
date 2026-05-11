@@ -46,6 +46,7 @@ describe("BFS fallback when sitemap is absent", () => {
       cacheDir: join(tmp, ".cache"),
       cache: true,
       userAgent: "docforge-test/0",
+      llmsFull: "auto",
     });
     expect(code).toBe(0);
     expect(existsSync(join(tmp, "index.md"))).toBe(true);

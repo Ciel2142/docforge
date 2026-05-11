@@ -45,6 +45,7 @@ describe("--fail-threshold gates exit code", () => {
         cacheDir: join(tmp, ".cache"),
         cache: true,
         userAgent: "docforge-test/0",
+        llmsFull: "auto",
       });
       expect(code).toBe(1);
     },
@@ -65,6 +66,7 @@ describe("--fail-threshold gates exit code", () => {
         cacheDir: join(tmp, ".cache"),
         cache: true,
         userAgent: "docforge-test/0",
+        llmsFull: "auto",
       });
       expect(code).toBe(0);
     },

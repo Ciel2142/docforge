@@ -55,6 +55,7 @@ describe("robots.txt Disallow is honored during crawl", () => {
       cacheDir: join(tmp, ".cache"),
       cache: true,
       userAgent: "docforge-test/0",
+      llmsFull: "auto",
     });
     expect(code).toBe(0);
     expect(existsSync(join(tmp, "private", "secret.md"))).toBe(false);

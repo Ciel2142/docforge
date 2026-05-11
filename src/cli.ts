@@ -51,6 +51,8 @@ export function buildProgram(): Command {
     .option("--cache-dir <path>", "ETag cache directory (URL source only)", DEFAULT_CACHE_DIR)
     .option("--no-cache", "disable ETag cache (URL source only)")
     .option("--user-agent <str>", "User-Agent header (URL source only)", DEFAULT_USER_AGENT)
+    .option("--selector <css>", "CSS selector override for body extraction (Defuddle contentSelector)")
+    .option("--llms-full <mode>", "llms-full.txt mode: auto|force|off (URL source only)", "auto")
     .action(async (source: string, opts: ConvertOpts) => {
       const code = await runConvert(source, opts);
       if (code !== 0) process.exit(code);
@@ -73,6 +75,8 @@ interface ConvertOpts {
   cacheDir: string;
   cache: boolean; // commander --no-cache → cache: false
   userAgent: string;
+  selector?: string | undefined;
+  llmsFull: string;
 }
 
 function isUrl(s: string): boolean {
@@ -161,7 +165,12 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       continue;
     }
 
-    const result = convertHtml(item.bytes.toString("utf8"));
+    const convertOpts: { selector?: string; url?: string } = {};
+    if (opts.selector !== undefined) convertOpts.selector = opts.selector;
+    if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
+      convertOpts.url = item.srcUri;
+    }
+    const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
     if (result.status === "empty") {
       empty += 1;
       log("debug", `empty ${item.key}`);
