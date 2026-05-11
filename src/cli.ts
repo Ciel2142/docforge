@@ -1,22 +1,26 @@
 import { Command } from "commander";
-import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
-import { basename, dirname, extname, relative, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync } from "node:fs";
+import { basename, extname, resolve } from "node:path";
 
 import { VERSION } from "./index.js";
 import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
 import { rewriteInternalLinks } from "./links.js";
 import {
-  CollisionError,
   buildOutput,
-  detectCollisions,
   writeOutput,
   writeReportJson,
+  urlToOutputPath,
   type ReportEntry,
 } from "./output.js";
-import { iterHtmlFiles } from "./walk.js";
 import { log, setLevel } from "./log.js";
 import { registerOpenapiSubcommand } from "./openapi/cli.js";
+import { FilesystemSource, HttpSource, type Source, type SourceItem } from "./source.js";
+import type { FetchOptions } from "./http/fetch.js";
+import type { CrawlOptions } from "./http/crawl.js";
+
+const DEFAULT_USER_AGENT = `docforge/${VERSION}`;
+const DEFAULT_CACHE_DIR = "~/.cache/docforge";
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -34,21 +38,19 @@ export function buildProgram(): Command {
 
   program
     .command("convert")
-    .description("Convert HTML to Markdown")
-    .argument("<source>", "path to HTML file or directory")
-    .requiredOption("--output <dir>", "output directory (mirrors source structure)")
-    .option(
-      "--fail-threshold <ratio>",
-      "max acceptable failure ratio before exit 1 (default 0.10; set 1.0 to disable)",
-      "0.10",
-    )
-    .option(
-      "--max-bytes <int>",
-      "skip HTML files larger than N bytes (default 10MB)",
-      "10485760",
-    )
+    .description("Convert HTML (filesystem path or http(s) URL) to Markdown")
+    .argument("<source>", "filesystem path OR http(s):// URL")
+    .requiredOption("--output <dir>", "output directory")
+    .option("--fail-threshold <ratio>", "max acceptable failure ratio before exit 1", "0.10")
+    .option("--max-bytes <int>", "skip HTML files/responses larger than N bytes", "10485760")
     .option("--dry-run", "walk + report planned outputs, write nothing", false)
     .option("--report-json <path>", "write per-file report JSON to <path>")
+    .option("--max-pages <N>", "max URLs to fetch (URL source only)", "5000")
+    .option("--max-depth <N>", "max BFS depth (URL source only)", "10")
+    .option("--concurrency <N>", "parallel fetches (URL source only)", "4")
+    .option("--cache-dir <path>", "ETag cache directory (URL source only)", DEFAULT_CACHE_DIR)
+    .option("--no-cache", "disable ETag cache (URL source only)")
+    .option("--user-agent <str>", "User-Agent header (URL source only)", DEFAULT_USER_AGENT)
     .action(async (source: string, opts: ConvertOpts) => {
       const code = await runConvert(source, opts);
       if (code !== 0) process.exit(code);
@@ -65,22 +67,20 @@ interface ConvertOpts {
   maxBytes: string;
   dryRun: boolean;
   reportJson?: string | undefined;
+  maxPages: string;
+  maxDepth: string;
+  concurrency: string;
+  cacheDir: string;
+  cache: boolean; // commander --no-cache → cache: false
+  userAgent: string;
 }
 
-async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<number> {
-  const source = resolve(expandHome(sourceArg));
+function isUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s);
+}
+
+export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<number> {
   const output = resolve(expandHome(opts.output));
-
-  if (!existsSync(source)) {
-    log("error", `source not found: ${source}`);
-    return 2;
-  }
-  const st = lstatSync(source);
-  if (!st.isFile() && !st.isDirectory()) {
-    log("error", `source is neither file nor directory: ${source}`);
-    return 2;
-  }
-
   try {
     mkdirSync(output, { recursive: true });
   } catch (e) {
@@ -91,67 +91,89 @@ async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<number>
   const maxBytes = parseInt(opts.maxBytes, 10);
   const failThreshold = parseFloat(opts.failThreshold);
 
-  const walk = iterHtmlFiles(source, maxBytes);
-  if (walk.paths.length === 0) {
-    log("warn", `no HTML files found under ${source}`);
-    log("info", `converted=0 empty=0 skipped=${walk.skippedCount} failed=0 total=0`);
-    return 0;
-  }
-
-  const sourceRoot = st.isFile() ? dirname(source) : source;
-
-  let mapping: Map<string, string>;
-  try {
-    mapping = detectCollisions(walk.paths, sourceRoot, output);
-  } catch (e) {
-    if (e instanceof CollisionError) {
-      log("error", e.message);
+  let source: Source;
+  if (isUrl(sourceArg)) {
+    const fetchOpts: FetchOptions = {
+      userAgent: opts.userAgent,
+      timeoutMs: 30_000,
+      maxBytes,
+      cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
+    };
+    const crawlOpts: CrawlOptions = {
+      maxPages: parseInt(opts.maxPages, 10),
+      maxDepth: parseInt(opts.maxDepth, 10),
+      concurrency: parseInt(opts.concurrency, 10),
+      userAgent: opts.userAgent,
+    };
+    if (fetchOpts.cacheDir) {
+      try {
+        mkdirSync(fetchOpts.cacheDir, { recursive: true });
+      } catch (e) {
+        log("warn", `cache dir not writable, continuing without cache: ${(e as Error).message}`);
+        fetchOpts.cacheDir = null;
+      }
+    }
+    source = new HttpSource(sourceArg, fetchOpts, crawlOpts);
+  } else {
+    const fsPath = resolve(expandHome(sourceArg));
+    if (!existsSync(fsPath)) {
+      log("error", `source not found: ${fsPath}`);
       return 2;
     }
-    throw e;
+    const st = lstatSync(fsPath);
+    if (!st.isFile() && !st.isDirectory()) {
+      log("error", `source is neither file nor directory: ${fsPath}`);
+      return 2;
+    }
+    source = new FilesystemSource(fsPath, maxBytes);
   }
 
   let converted = 0;
   let empty = 0;
   let failed = 0;
   const report: ReportEntry[] = [];
+  const outputsUsed = new Map<string, string>(); // outPath -> srcUri (for runtime collision)
 
-  for (const inPath of walk.paths) {
-    const rel = relative(sourceRoot, inPath).split(/[\\/]/).join("/");
-    const outPath = mapping.get(inPath)!;
-
-    if (opts.dryRun) {
-      log("info", `DRY ${rel} -> ${outPath}`);
-      continue;
+  for await (const item of source.iter()) {
+    const outPath = computeOutputPath(item, output);
+    const prior = outputsUsed.get(outPath);
+    if (prior && prior !== item.srcUri) {
+      log("error", `output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
+      return 2;
     }
+    outputsUsed.set(outPath, item.srcUri);
 
-    let raw: string;
-    try {
-      raw = readFileSync(inPath).toString("utf8");
-    } catch (e) {
+    if (item.error) {
       failed += 1;
-      log("error", `FAIL read ${rel}: ${(e as Error).message}`);
+      log("error", `FAIL fetch ${item.key}: ${item.error}`);
       report.push({
-        input: rel,
+        input: item.key,
+        srcUri: item.srcUri,
         output: null,
         status: "failed",
-        error: (e as Error).message,
+        error: item.error,
       });
       continue;
     }
 
-    const result = convertHtml(raw);
+    if (opts.dryRun) {
+      log("info", `DRY ${item.key} -> ${outPath}`);
+      continue;
+    }
+
+    const result = convertHtml(item.bytes.toString("utf8"));
     if (result.status === "empty") {
       empty += 1;
-      log("debug", `empty ${rel}`);
-      report.push({ input: rel, output: null, status: "empty" });
+      log("debug", `empty ${item.key}`);
+      report.push({ input: item.key, srcUri: item.srcUri, output: null, status: "empty" });
       continue;
     }
     if (result.status === "failed") {
       failed += 1;
-      log("error", `FAIL ${rel}: ${result.error}`);
+      log("error", `FAIL ${item.key}: ${result.error}`);
       report.push({
-        input: rel,
+        input: item.key,
+        srcUri: item.srcUri,
         output: null,
         status: "failed",
         error: result.error,
@@ -159,16 +181,16 @@ async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<number>
       continue;
     }
 
-    const stem = basename(inPath, extname(inPath));
+    const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
     const bodyMd = rewriteInternalLinks(result.body_md);
-    const content = buildOutput(title, rel, bodyMd);
+    const content = buildOutput(title, item.key, bodyMd);
     writeOutput(outPath, content);
     converted += 1;
-    report.push({ input: rel, output: outPath, status: "ok" });
+    report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
   }
 
-  const skipped = walk.skippedCount;
+  const skipped = source.skippedCount;
   const total = converted + empty + failed;
 
   if (opts.reportJson) {
@@ -187,8 +209,16 @@ async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<number>
     );
     return 1;
   }
-
   return 0;
+}
+
+function computeOutputPath(item: SourceItem, outputDir: string): string {
+  if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
+    return urlToOutputPath(item.srcUri, outputDir);
+  }
+  // filesystem: mirror item.key under outputDir, .html → .md
+  const outRel = item.key.replace(/\.html?$/i, ".md");
+  return resolve(outputDir, outRel);
 }
 
 function expandHome(p: string): string {

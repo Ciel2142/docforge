@@ -31,6 +31,42 @@ describe("convert parser", () => {
   });
 });
 
+describe("convert URL detection", () => {
+  test("accepts http(s) URL as <source>", () => {
+    const p = buildProgram();
+    p.exitOverride();
+    // Should not throw during parse — actual execution is mocked in integration tests
+    expect(() =>
+      p.parse(
+        ["convert", "https://x.com/", "--output", "/tmp/x", "--dry-run"],
+        { from: "user" },
+      ),
+    ).not.toThrow();
+  });
+
+  test("accepts new flags", () => {
+    const p = buildProgram();
+    p.exitOverride();
+    expect(() =>
+      p.parse(
+        [
+          "convert",
+          "https://x.com/",
+          "--output",
+          "/tmp/x",
+          "--max-pages",
+          "10",
+          "--concurrency",
+          "2",
+          "--no-cache",
+          "--dry-run",
+        ],
+        { from: "user" },
+      ),
+    ).not.toThrow();
+  });
+});
+
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
