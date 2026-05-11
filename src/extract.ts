@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { Defuddle } from "defuddle/node";
+import type { DefuddleOptions } from "defuddle";
 
 export interface ExtractOptions {
   selector?: string;
@@ -21,7 +22,7 @@ export async function extractMainContent(
 ): Promise<ExtractResult> {
   const { document } = parseHTML(rawHtml);
 
-  const defuddleOpts: Record<string, unknown> = {
+  const defuddleOpts: DefuddleOptions = {
     markdown: false,
     removePartialSelectors: true,
   };
@@ -29,6 +30,7 @@ export async function extractMainContent(
   if (opts.url !== undefined) defuddleOpts.url = opts.url;
 
   const result = await Defuddle(
+    // linkedom returns its own Document-ish type; cast through `unknown` because lib.dom's Document is structurally narrower (e.g. some optional fields differ).
     document as unknown as Document,
     opts.url ?? "",
     defuddleOpts,
