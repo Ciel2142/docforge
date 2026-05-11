@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import got, { type Got, type OptionsOfTextResponseBody, RequestError, HTTPError, TimeoutError } from "got";
-import Keyv from "keyv";
 import { KeyvFile } from "keyv-file";
+import { CompatKeyv } from "./compat-keyv.js";
 
 export class FetchError extends Error {
   public status: number | null;
@@ -46,7 +46,7 @@ function makeClient(opts: FetchOptions): Got {
   }
   if (cached && cached.dir === opts.cacheDir) return cached.client;
   const store = new KeyvFile({ filename: join(opts.cacheDir, "responses.json") });
-  const keyv = new Keyv({ store });
+  const keyv = new CompatKeyv({ store });
   const client = got.extend({ ...base, cache: keyv as unknown as Map<string, unknown> });
   cached = { dir: opts.cacheDir, client };
   return client;
