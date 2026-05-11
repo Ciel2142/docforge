@@ -21,10 +21,12 @@
     "cacheable-request": "^13.0.19",
     "cheerio": "^1",
     "commander": "^13",
+    "defuddle": "^0.18.1",
     "got": "^15.0.5",
     "js-yaml": "^4",
     "keyv": "^5.6.0",
     "keyv-file": "^5.3.3",
+    "linkedom": "^0.18.12",
     "p-queue": "^9.2.0",
     "sitemapper": "^4.1.6"
   },
