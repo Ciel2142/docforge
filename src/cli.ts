@@ -103,12 +103,17 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       maxBytes,
       cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
     };
+    const llmsFullMode = opts.llmsFull as "auto" | "force" | "off";
+    if (llmsFullMode !== "auto" && llmsFullMode !== "force" && llmsFullMode !== "off") {
+      log("error", `invalid --llms-full value: ${opts.llmsFull} (expected auto|force|off)`);
+      return 2;
+    }
     const crawlOpts: CrawlOptions = {
       maxPages: parseInt(opts.maxPages, 10),
       maxDepth: parseInt(opts.maxDepth, 10),
       concurrency: parseInt(opts.concurrency, 10),
       userAgent: opts.userAgent,
-      llmsFullMode: opts.llmsFull as "auto" | "force" | "off",
+      llmsFullMode,
     };
     if (fetchOpts.cacheDir) {
       try {
@@ -158,6 +163,18 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
         status: "failed",
         error: item.error,
       });
+      continue;
+    }
+
+    if (item.kind === "llms-full") {
+      if (opts.dryRun) {
+        log("info", `DRY ${item.key} -> ${outPath}`);
+        continue;
+      }
+      const md = rewriteInternalLinks(item.bytes.toString("utf8"));
+      writeOutput(outPath, md);
+      converted += 1;
+      report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
       continue;
     }
 
@@ -223,6 +240,9 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
 }
 
 function computeOutputPath(item: SourceItem, outputDir: string): string {
+  if (item.kind === "llms-full") {
+    return resolve(outputDir, "llms-full.md");
+  }
   if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
     return urlToOutputPath(item.srcUri, outputDir);
   }
