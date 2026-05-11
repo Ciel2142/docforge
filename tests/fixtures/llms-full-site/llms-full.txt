@@ -1,0 +1,7 @@
+# Test Site
+
+This is the canonical llms-full.txt body for the test site.
+
+## Section
+
+Content goes here. Markdown formatting is preserved verbatim.
