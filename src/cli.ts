@@ -1,23 +1,12 @@
 import { Command } from "commander";
-import { existsSync, lstatSync, mkdirSync } from "node:fs";
-import { basename, extname, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { VERSION } from "./index.js";
-import { convertHtml } from "./convert.js";
-import { extractTitle } from "./title.js";
-import { rewriteInternalLinks } from "./links.js";
-import {
-  buildOutput,
-  writeOutput,
-  writeReportJson,
-  urlToOutputPath,
-  type ReportEntry,
-} from "./output.js";
+import { writeReportJson } from "./output.js";
 import { log, setLevel } from "./log.js";
 import { registerOpenapiSubcommand } from "./openapi/cli.js";
-import { FilesystemSource, HttpSource, type Source, type SourceItem } from "./source.js";
-import type { FetchOptions } from "./http/fetch.js";
-import type { CrawlOptions } from "./http/crawl.js";
+import { runPipeline, type RunPipelineOptions } from "./runPipeline.js";
 
 const DEFAULT_USER_AGENT = `docforge/${VERSION}`;
 const DEFAULT_CACHE_DIR = "~/.cache/docforge";
@@ -95,165 +84,61 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
   const maxBytes = parseInt(opts.maxBytes, 10);
   const failThreshold = parseFloat(opts.failThreshold);
 
-  let source: Source;
+  const pipelineOpts: RunPipelineOptions = {
+    source: isUrl(sourceArg) ? sourceArg : resolve(expandHome(sourceArg)),
+    outputDir: output,
+    maxBytes,
+    dryRun: opts.dryRun,
+  };
+  if (opts.selector !== undefined) pipelineOpts.selector = opts.selector;
+
   if (isUrl(sourceArg)) {
-    const fetchOpts: FetchOptions = {
-      userAgent: opts.userAgent,
-      timeoutMs: 30_000,
-      maxBytes,
-      cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
-    };
     const llmsFullMode = opts.llmsFull as "auto" | "force" | "off";
     if (llmsFullMode !== "auto" && llmsFullMode !== "force" && llmsFullMode !== "off") {
       log("error", `invalid --llms-full value: ${opts.llmsFull} (expected auto|force|off)`);
       return 2;
     }
-    const crawlOpts: CrawlOptions = {
+    pipelineOpts.fetchOptions = {
+      userAgent: opts.userAgent,
+      timeoutMs: 30_000,
+      maxBytes,
+      cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
+    };
+    pipelineOpts.crawlOptions = {
       maxPages: parseInt(opts.maxPages, 10),
       maxDepth: parseInt(opts.maxDepth, 10),
       concurrency: parseInt(opts.concurrency, 10),
       userAgent: opts.userAgent,
       llmsFullMode,
     };
-    if (fetchOpts.cacheDir) {
-      try {
-        mkdirSync(fetchOpts.cacheDir, { recursive: true });
-      } catch (e) {
-        log("warn", `cache dir not writable, continuing without cache: ${(e as Error).message}`);
-        fetchOpts.cacheDir = null;
-      }
-    }
-    source = new HttpSource(sourceArg, fetchOpts, crawlOpts);
-  } else {
-    const fsPath = resolve(expandHome(sourceArg));
-    if (!existsSync(fsPath)) {
-      log("error", `source not found: ${fsPath}`);
-      return 2;
-    }
-    const st = lstatSync(fsPath);
-    if (!st.isFile() && !st.isDirectory()) {
-      log("error", `source is neither file nor directory: ${fsPath}`);
-      return 2;
-    }
-    source = new FilesystemSource(fsPath, maxBytes);
   }
 
-  let converted = 0;
-  let empty = 0;
-  let failed = 0;
-  const report: ReportEntry[] = [];
-  const outputsUsed = new Map<string, string>(); // outPath -> srcUri (for runtime collision)
-
+  let result;
   try {
-    for await (const item of source.iter()) {
-      const outPath = computeOutputPath(item, output);
-      const prior = outputsUsed.get(outPath);
-      if (prior && prior !== item.srcUri) {
-        log("error", `output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
-        return 2;
-      }
-      outputsUsed.set(outPath, item.srcUri);
-
-      if (item.error) {
-        failed += 1;
-        log("error", `FAIL fetch ${item.key}: ${item.error}`);
-        report.push({
-          input: item.key,
-          srcUri: item.srcUri,
-          output: null,
-          status: "failed",
-          error: item.error,
-        });
-        continue;
-      }
-
-      if (item.kind === "llms-full") {
-        if (opts.dryRun) {
-          log("info", `DRY ${item.key} -> ${outPath}`);
-          continue;
-        }
-        const md = rewriteInternalLinks(item.bytes.toString("utf8"));
-        writeOutput(outPath, md);
-        converted += 1;
-        report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
-        continue;
-      }
-
-      if (opts.dryRun) {
-        log("info", `DRY ${item.key} -> ${outPath}`);
-        continue;
-      }
-
-      const convertOpts: { selector?: string; url?: string } = {};
-      if (opts.selector !== undefined) convertOpts.selector = opts.selector;
-      if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
-        convertOpts.url = item.srcUri;
-      }
-      const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
-      if (result.status === "empty") {
-        empty += 1;
-        log("debug", `empty ${item.key}`);
-        report.push({ input: item.key, srcUri: item.srcUri, output: null, status: "empty" });
-        continue;
-      }
-      if (result.status === "failed") {
-        failed += 1;
-        log("error", `FAIL ${item.key}: ${result.error}`);
-        report.push({
-          input: item.key,
-          srcUri: item.srcUri,
-          output: null,
-          status: "failed",
-          error: result.error,
-        });
-        continue;
-      }
-
-      const stem = basename(item.key, extname(item.key)) || "index";
-      const title = extractTitle(result.h1_text, result.soup_title_text, stem);
-      const bodyMd = rewriteInternalLinks(result.body_md);
-      const content = buildOutput(title, item.key, bodyMd);
-      writeOutput(outPath, content);
-      converted += 1;
-      report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
-    }
+    result = await runPipeline(pipelineOpts);
   } catch (e) {
     log("error", (e as Error).message);
     return 2;
   }
 
-  const skipped = source.skippedCount;
-  const total = converted + empty + failed;
-
   if (opts.reportJson) {
-    writeReportJson(resolve(expandHome(opts.reportJson)), report);
+    writeReportJson(resolve(expandHome(opts.reportJson)), result.report);
   }
 
+  const total = result.converted + result.empty + result.failed;
   log(
     "info",
-    `converted=${converted} empty=${empty} skipped=${skipped} failed=${failed} total=${total}`,
+    `converted=${result.converted} empty=${result.empty} skipped=${result.skipped} failed=${result.failed} total=${total}`,
   );
 
-  if (total > 0 && failed / total > failThreshold) {
+  if (total > 0 && result.failed / total > failThreshold) {
     log(
       "error",
-      `failure ratio ${(failed / total).toFixed(3)} exceeds threshold ${failThreshold.toFixed(3)}`,
+      `failure ratio ${(result.failed / total).toFixed(3)} exceeds threshold ${failThreshold.toFixed(3)}`,
     );
     return 1;
   }
   return 0;
-}
-
-function computeOutputPath(item: SourceItem, outputDir: string): string {
-  if (item.kind === "llms-full") {
-    return resolve(outputDir, "llms-full.md");
-  }
-  if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
-    return urlToOutputPath(item.srcUri, outputDir);
-  }
-  // filesystem: mirror item.key under outputDir, .html → .md
-  const outRel = item.key.replace(/\.html?$/i, ".md");
-  return resolve(outputDir, outRel);
 }
 
 function expandHome(p: string): string {
