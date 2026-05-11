@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { extractMainContent } from "../src/extract.js";
+import { extractBytesSync } from "@kreuzberg/node";
 
 describe("extractMainContent", () => {
   test("extracts Sphinx articleBody and returns wordCount + title", async () => {
@@ -40,4 +43,28 @@ describe("extractMainContent", () => {
       expect(r.cleanedHtml).not.toContain("Should not appear");
     }
   });
+});
+
+const FIXTURES = "tests/fixtures";
+const EXPECTED = "tests/expected";
+
+const NEW_GOLDEN_CASES = ["material-mkdocs", "generic-article", "generic-main"];
+
+describe("extract golden files", () => {
+  for (const name of NEW_GOLDEN_CASES) {
+    test(`golden: ${name}`, async () => {
+      const raw = readFileSync(join(FIXTURES, `${name}.html`), "utf8");
+      const r = await extractMainContent(raw);
+      expect(r.status).toBe("ok");
+      if (r.status === "ok") {
+        const md = extractBytesSync(
+          Buffer.from(r.cleanedHtml, "utf8"),
+          "text/html",
+          { useCache: false, outputFormat: "markdown" },
+        );
+        const expected = readFileSync(join(EXPECTED, `${name}.md`), "utf8");
+        expect(md.content.trim()).toBe(expected.trim());
+      }
+    });
+  }
 });
