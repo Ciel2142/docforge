@@ -108,6 +108,7 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       maxDepth: parseInt(opts.maxDepth, 10),
       concurrency: parseInt(opts.concurrency, 10),
       userAgent: opts.userAgent,
+      llmsFullMode: opts.llmsFull as "auto" | "force" | "off",
     };
     if (fetchOpts.cacheDir) {
       try {

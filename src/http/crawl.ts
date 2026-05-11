@@ -10,6 +10,7 @@ export interface CrawlOptions {
   maxDepth: number;
   concurrency: number;
   userAgent: string;
+  llmsFullMode: "auto" | "force" | "off";
 }
 
 export interface CrawlItem {

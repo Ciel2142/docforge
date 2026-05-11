@@ -93,7 +93,7 @@ describe("HttpSource", () => {
     const source = new HttpSource(
       `http://localhost:${port}/`,
       { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
-      { maxPages: 100, maxDepth: 10, concurrency: 1, userAgent: "t" },
+      { maxPages: 100, maxDepth: 10, concurrency: 1, userAgent: "t", llmsFullMode: "off" },
     );
     const items = [];
     for await (const it of source.iter()) items.push(it);

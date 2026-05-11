@@ -10,6 +10,7 @@ import { getRobots } from "./http/robots.js";
 import { discoverSitemaps } from "./http/sitemap.js";
 import { crawlBfs, type CrawlOptions } from "./http/crawl.js";
 import { normalizeUrl } from "./http/url.js";
+import { probeLlmsFullTxt } from "./http/llms.js";
 import { log } from "./log.js";
 
 export interface SourceItem {
@@ -18,6 +19,7 @@ export interface SourceItem {
   bytes: Buffer;
   contentType: string;
   error?: string;          // set when fetch failed; convert loop counts as failed
+  kind?: "html" | "llms-full";
 }
 
 export interface Source {
@@ -62,8 +64,27 @@ export class HttpSource implements Source {
   async *iter(): AsyncIterable<SourceItem> {
     const normalized = normalizeUrl(this.rootUrl);
     if (!normalized) throw new Error(`invalid root url: ${this.rootUrl}`);
-    const origin = new URL(normalized).origin;
 
+    if (this.crawlOpts.llmsFullMode !== "off") {
+      const llms = await probeLlmsFullTxt(normalized, this.fetchOpts);
+      if (llms) {
+        yield {
+          key: "llms-full.txt",
+          srcUri: llms.url,
+          bytes: llms.bytes,
+          contentType: llms.contentType,
+          kind: "llms-full",
+        };
+        return;
+      }
+      if (this.crawlOpts.llmsFullMode === "force") {
+        throw new Error(
+          `llms-full.txt required (--llms-full force) but not found at ${this.rootUrl}`,
+        );
+      }
+    }
+
+    const origin = new URL(normalized).origin;
     const robots = await getRobots(origin, this.fetchOpts);
     const sitemapUrls = await discoverSitemaps(normalized, robots, this.fetchOpts);
 

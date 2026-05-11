@@ -51,6 +51,7 @@ async function collect(rootUrl: string, robots: Robots, opts: Partial<{
     maxDepth: opts.maxDepth ?? 10,
     concurrency: opts.concurrency ?? 1,
     userAgent: "docforge-test/0",
+    llmsFullMode: "off" as const,
   })) {
     seen.push(item.url);
   }
