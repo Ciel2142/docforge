@@ -1,0 +1,4 @@
+User-agent: *
+Crawl-delay: 0
+Sitemap: /sitemap.xml
+Disallow: /private/

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>__BASE__/</loc></url>
+  <url><loc>__BASE__/guide/</loc></url>
+  <url><loc>__BASE__/guide/intro.html</loc></url>
+  <url><loc>__BASE__/guide/advanced.html</loc></url>
+  <url><loc>__BASE__/api/</loc></url>
+  <url><loc>__BASE__/api/reference.html</loc></url>
+</urlset>
