@@ -144,77 +144,82 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
   const report: ReportEntry[] = [];
   const outputsUsed = new Map<string, string>(); // outPath -> srcUri (for runtime collision)
 
-  for await (const item of source.iter()) {
-    const outPath = computeOutputPath(item, output);
-    const prior = outputsUsed.get(outPath);
-    if (prior && prior !== item.srcUri) {
-      log("error", `output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
-      return 2;
-    }
-    outputsUsed.set(outPath, item.srcUri);
+  try {
+    for await (const item of source.iter()) {
+      const outPath = computeOutputPath(item, output);
+      const prior = outputsUsed.get(outPath);
+      if (prior && prior !== item.srcUri) {
+        log("error", `output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
+        return 2;
+      }
+      outputsUsed.set(outPath, item.srcUri);
 
-    if (item.error) {
-      failed += 1;
-      log("error", `FAIL fetch ${item.key}: ${item.error}`);
-      report.push({
-        input: item.key,
-        srcUri: item.srcUri,
-        output: null,
-        status: "failed",
-        error: item.error,
-      });
-      continue;
-    }
+      if (item.error) {
+        failed += 1;
+        log("error", `FAIL fetch ${item.key}: ${item.error}`);
+        report.push({
+          input: item.key,
+          srcUri: item.srcUri,
+          output: null,
+          status: "failed",
+          error: item.error,
+        });
+        continue;
+      }
 
-    if (item.kind === "llms-full") {
+      if (item.kind === "llms-full") {
+        if (opts.dryRun) {
+          log("info", `DRY ${item.key} -> ${outPath}`);
+          continue;
+        }
+        const md = rewriteInternalLinks(item.bytes.toString("utf8"));
+        writeOutput(outPath, md);
+        converted += 1;
+        report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
+        continue;
+      }
+
       if (opts.dryRun) {
         log("info", `DRY ${item.key} -> ${outPath}`);
         continue;
       }
-      const md = rewriteInternalLinks(item.bytes.toString("utf8"));
-      writeOutput(outPath, md);
+
+      const convertOpts: { selector?: string; url?: string } = {};
+      if (opts.selector !== undefined) convertOpts.selector = opts.selector;
+      if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
+        convertOpts.url = item.srcUri;
+      }
+      const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
+      if (result.status === "empty") {
+        empty += 1;
+        log("debug", `empty ${item.key}`);
+        report.push({ input: item.key, srcUri: item.srcUri, output: null, status: "empty" });
+        continue;
+      }
+      if (result.status === "failed") {
+        failed += 1;
+        log("error", `FAIL ${item.key}: ${result.error}`);
+        report.push({
+          input: item.key,
+          srcUri: item.srcUri,
+          output: null,
+          status: "failed",
+          error: result.error,
+        });
+        continue;
+      }
+
+      const stem = basename(item.key, extname(item.key)) || "index";
+      const title = extractTitle(result.h1_text, result.soup_title_text, stem);
+      const bodyMd = rewriteInternalLinks(result.body_md);
+      const content = buildOutput(title, item.key, bodyMd);
+      writeOutput(outPath, content);
       converted += 1;
       report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
-      continue;
     }
-
-    if (opts.dryRun) {
-      log("info", `DRY ${item.key} -> ${outPath}`);
-      continue;
-    }
-
-    const convertOpts: { selector?: string; url?: string } = {};
-    if (opts.selector !== undefined) convertOpts.selector = opts.selector;
-    if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
-      convertOpts.url = item.srcUri;
-    }
-    const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
-    if (result.status === "empty") {
-      empty += 1;
-      log("debug", `empty ${item.key}`);
-      report.push({ input: item.key, srcUri: item.srcUri, output: null, status: "empty" });
-      continue;
-    }
-    if (result.status === "failed") {
-      failed += 1;
-      log("error", `FAIL ${item.key}: ${result.error}`);
-      report.push({
-        input: item.key,
-        srcUri: item.srcUri,
-        output: null,
-        status: "failed",
-        error: result.error,
-      });
-      continue;
-    }
-
-    const stem = basename(item.key, extname(item.key)) || "index";
-    const title = extractTitle(result.h1_text, result.soup_title_text, stem);
-    const bodyMd = rewriteInternalLinks(result.body_md);
-    const content = buildOutput(title, item.key, bodyMd);
-    writeOutput(outPath, content);
-    converted += 1;
-    report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
+  } catch (e) {
+    log("error", (e as Error).message);
+    return 2;
   }
 
   const skipped = source.skippedCount;

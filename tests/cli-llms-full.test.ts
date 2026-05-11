@@ -41,6 +41,14 @@ describe("CLI --llms-full flag", () => {
     const files = readdirSync(outDir);
     expect(files).toContain("llms-full.md");
   });
+
+  test("force: returns 2 when llms-full.txt is absent", async () => {
+    await server.close();
+    const NO_LLMS = resolve("tests/fixtures/crawl-site");
+    server = await startStaticServer({ rootDir: NO_LLMS, rewriteBase: true });
+    const code = await runConvert(server.baseUrl, baseOpts(outDir, "force"));
+    expect(code).toBe(2);
+  });
 });
 
 function baseOpts(outDir: string, llmsFull: string) {
