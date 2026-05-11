@@ -1,18 +1,12 @@
 import { Command } from "commander";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { VERSION } from "../index.js";
 import { log } from "../log.js";
-import { iterEndpoints, iterSchemas } from "./iter.js";
-import { UnsupportedSpecError, loadSpec, loadSpecFromUrl } from "./loader.js";
-import {
-  SlugCollisionError,
-  detectEndpointCollisions,
-  endpointFilename,
-  schemaFilename,
-} from "./paths.js";
-import { renderEndpoint, renderSchema } from "./render.js";
+import { UnsupportedSpecError } from "./loader.js";
+import { SlugCollisionError } from "./paths.js";
+import { runOpenapiPipeline } from "./pipeline.js";
 import type { FetchOptions } from "../http/fetch.js";
 
 const DEFAULT_USER_AGENT = `docforge/${VERSION}`;
@@ -47,32 +41,39 @@ function isUrl(s: string): boolean {
 async function runOpenapi(specArg: string, opts: OpenapiOpts): Promise<number> {
   const output = resolve(expandHome(opts.output));
 
-  let spec: Record<string, unknown>;
-  let specFilename: string;
-  try {
-    if (isUrl(specArg)) {
-      const fetchOpts: FetchOptions = {
-        userAgent: opts.userAgent,
-        timeoutMs: 30_000,
-        maxBytes: 50 * 1024 * 1024,
-        cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
-      };
-      if (fetchOpts.cacheDir) {
-        try {
-          mkdirSync(fetchOpts.cacheDir, { recursive: true });
-        } catch {
-          fetchOpts.cacheDir = null;
-        }
+  let fetchOpts: FetchOptions | undefined;
+  if (isUrl(specArg)) {
+    const cacheDir = opts.cache ? expandHome(opts.cacheDir) : null;
+    if (cacheDir) {
+      try {
+        mkdirSync(cacheDir, { recursive: true });
+      } catch {
+        // best-effort cache dir creation; fall back to no cache
       }
-      spec = await loadSpecFromUrl(specArg, fetchOpts);
-      specFilename = basename(new URL(specArg).pathname) || "openapi";
-    } else {
-      const specPath = resolve(expandHome(specArg));
-      spec = loadSpec(specPath);
-      specFilename = basename(specPath);
     }
+    fetchOpts = {
+      userAgent: opts.userAgent,
+      timeoutMs: 30_000,
+      maxBytes: 50 * 1024 * 1024,
+      cacheDir: cacheDir,
+    };
+  }
+
+  const source = isUrl(specArg) ? specArg : resolve(expandHome(specArg));
+
+  try {
+    const pipelineOpts = fetchOpts !== undefined
+      ? { source, outputDir: output, fetchOptions: fetchOpts }
+      : { source, outputDir: output };
+    const result = await runOpenapiPipeline(pipelineOpts);
+    log("info", `endpoints=${result.endpoints} schemas=${result.schemas}`);
+    return 0;
   } catch (e) {
     if (e instanceof UnsupportedSpecError) {
+      log("error", e.message);
+      return 2;
+    }
+    if (e instanceof SlugCollisionError) {
       log("error", e.message);
       return 2;
     }
@@ -82,36 +83,6 @@ async function runOpenapi(specArg: string, opts: OpenapiOpts): Promise<number> {
     }
     throw e;
   }
-
-  const endpointsDir = resolve(output, "endpoints");
-  const schemasDir = resolve(output, "schemas");
-  mkdirSync(endpointsDir, { recursive: true });
-  mkdirSync(schemasDir, { recursive: true });
-
-  const endpoints = Array.from(iterEndpoints(spec));
-  const schemas = Array.from(iterSchemas(spec));
-
-  try {
-    detectEndpointCollisions(endpoints.map((e) => [e.method, e.path]));
-  } catch (e) {
-    if (e instanceof SlugCollisionError) {
-      log("error", e.message);
-      return 2;
-    }
-    throw e;
-  }
-
-  for (const ep of endpoints) {
-    const outPath = resolve(endpointsDir, endpointFilename(ep.method, ep.path));
-    writeFileSync(outPath, renderEndpoint(ep, { specFilename }), "utf8");
-  }
-  for (const sc of schemas) {
-    const outPath = resolve(schemasDir, schemaFilename(sc.name));
-    writeFileSync(outPath, renderSchema(sc, { specFilename }), "utf8");
-  }
-
-  log("info", `endpoints=${endpoints.length} schemas=${schemas.length}`);
-  return 0;
 }
 
 function expandHome(p: string): string {
