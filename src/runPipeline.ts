@@ -41,6 +41,9 @@ function computeOutputPath(item: SourceItem, outputDir: string): string {
   if (item.kind === "llms-full") {
     return resolve(outputDir, "llms-full.md");
   }
+  if (item.outputKey) {
+    return resolve(outputDir, item.outputKey);
+  }
   if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
     return urlToOutputPath(item.srcUri, outputDir);
   }
@@ -103,7 +106,7 @@ export async function runPipeline(
       continue;
     }
 
-    if (item.kind === "llms-full") {
+    if (item.kind === "llms-full" || item.kind === "markdown") {
       if (opts.dryRun) {
         log("info", `DRY ${item.key} -> ${outPath}`);
         continue;

@@ -15,12 +15,14 @@ import { clampPreviewBytes, truncateMarkdown } from "../preview.js";
 import type { ServerContext, ToolDefinition } from "../server.js";
 import { VERSION } from "../../index.js";
 import { probeLlmsFullTxt } from "../../http/llms.js";
+import { probeLlmsTxt } from "../../http/llms-index.js";
 
 interface ConvertArgs {
   url: string;
   corpus?: string;
-  kind?: "auto" | "page" | "site" | "llms-full";
+  kind?: "auto" | "page" | "site" | "llms-full" | "llms-index";
   llms_full?: "auto" | "force" | "off";
+  llms_index?: "auto" | "force" | "off";
   selector?: string;
   max_pages?: number;
   max_depth?: number;
@@ -41,12 +43,16 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
   const args: ConvertArgs = { url };
   if (typeof raw.corpus === "string") args.corpus = raw.corpus;
   if (typeof raw.kind === "string") {
-    const k = raw.kind as "auto" | "page" | "site" | "llms-full";
+    const k = raw.kind as "auto" | "page" | "site" | "llms-full" | "llms-index";
     args.kind = k;
   }
   if (typeof raw.llms_full === "string") {
     const lf = raw.llms_full as "auto" | "force" | "off";
     args.llms_full = lf;
+  }
+  if (typeof raw.llms_index === "string") {
+    const li = raw.llms_index as "auto" | "force" | "off";
+    args.llms_index = li;
   }
   if (typeof raw.selector === "string") args.selector = raw.selector;
   if (typeof raw.max_pages === "number") args.max_pages = raw.max_pages;
@@ -79,20 +85,33 @@ export function resolveKindFromUrl(url: string): CorpusKind {
 
 async function resolveKind(args: ConvertArgs, userAgent: string): Promise<CorpusKind> {
   if (args.kind && args.kind !== "auto") return args.kind;
-  const mode = args.llms_full ?? "auto";
-  if (mode !== "off") {
-    const probe = await probeLlmsFullTxt(args.url, {
-      userAgent,
-      timeoutMs: 10_000,
-      maxBytes: 10 * 1024 * 1024,
-      cacheDir: null,
-    });
+  const probeOpts = {
+    userAgent,
+    timeoutMs: 10_000,
+    maxBytes: 10 * 1024 * 1024,
+    cacheDir: null,
+  };
+  const fullMode = args.llms_full ?? "auto";
+  if (fullMode !== "off") {
+    const probe = await probeLlmsFullTxt(args.url, probeOpts);
     if (probe) return "llms-full";
-    if (mode === "force") {
+    if (fullMode === "force") {
       throw new McpError(
         "LLMS_FULL_MISSING",
         `llms-full.txt not found at ${args.url}`,
         "use llms_full=\"auto\" to fall back to HTML, or pick a different source",
+      );
+    }
+  }
+  const indexMode = args.llms_index ?? "auto";
+  if (indexMode !== "off") {
+    const probe = await probeLlmsTxt(args.url, probeOpts);
+    if (probe) return "llms-index";
+    if (indexMode === "force") {
+      throw new McpError(
+        "LLMS_INDEX_MISSING",
+        `llms.txt not found at ${args.url}`,
+        "use llms_index=\"auto\" to fall back to HTML, or pick a different source",
       );
     }
   }
@@ -136,14 +155,15 @@ function readTitle(absPath: string): string {
 
 export const convertTool: ToolDefinition = {
   name: "convert",
-  description: "Convert a URL (page, site crawl, or llms-full.txt) to Markdown under $DOCFORGE_QMD_ROOT.",
+  description: "Convert a URL (page, site crawl, llms-full.txt, or llms.txt index) to Markdown under $DOCFORGE_QMD_ROOT.",
   inputSchema: {
     type: "object",
     properties: {
       url: { type: "string", description: "http(s) URL" },
       corpus: { type: "string", description: "override derived collection name" },
-      kind: { type: "string", enum: ["auto", "page", "site", "llms-full"], default: "auto" },
+      kind: { type: "string", enum: ["auto", "page", "site", "llms-full", "llms-index"], default: "auto" },
       llms_full: { type: "string", enum: ["auto", "force", "off"], default: "auto" },
+      llms_index: { type: "string", enum: ["auto", "force", "off"], default: "auto" },
       selector: { type: "string", description: "CSS selector override for body extraction" },
       max_pages: { type: "integer", minimum: 1 },
       max_depth: { type: "integer", minimum: 1 },
@@ -209,7 +229,8 @@ export const convertTool: ToolDefinition = {
           maxDepth: args.max_depth ?? ctx.config.maxDepth,
           concurrency: args.concurrency ?? ctx.config.concurrency,
           userAgent: args.user_agent ?? ctx.config.userAgent,
-          llmsFullMode: args.llms_full ?? "auto",
+          llmsFullMode: kind === "llms-full" ? "force" : "off",
+          llmsIndexMode: kind === "llms-index" ? "force" : "off",
           singlePage: kind === "page",
         },
       };

@@ -11,6 +11,7 @@ import { discoverSitemaps } from "./http/sitemap.js";
 import { crawlBfs, type CrawlOptions } from "./http/crawl.js";
 import { normalizeUrl } from "./http/url.js";
 import { probeLlmsFullTxt } from "./http/llms.js";
+import { probeLlmsTxt, type LlmsIndexEntry } from "./http/llms-index.js";
 import { log } from "./log.js";
 
 export interface SourceItem {
@@ -19,7 +20,8 @@ export interface SourceItem {
   bytes: Buffer;
   contentType: string;
   error?: string;          // set when fetch failed; convert loop counts as failed
-  kind?: "html" | "llms-full";
+  kind?: "html" | "llms-full" | "markdown";
+  outputKey?: string;      // when set, runPipeline uses this for output path (host-prefixed for cross-origin)
 }
 
 export interface Source {
@@ -113,6 +115,19 @@ export class HttpSource implements Source {
       }
     }
 
+    if ((this.crawlOpts.llmsIndexMode ?? "auto") !== "off") {
+      const idx = await probeLlmsTxt(normalized, this.fetchOpts);
+      if (idx) {
+        yield* this.iterFromLlmsIndex(idx.parsed.links);
+        return;
+      }
+      if (this.crawlOpts.llmsIndexMode === "force") {
+        throw new Error(
+          `llms.txt required (--llms-index force) but not found at ${this.rootUrl}`,
+        );
+      }
+    }
+
     const origin = new URL(normalized).origin;
     const robots = await getRobots(origin, this.fetchOpts);
     const sitemapUrls = await discoverSitemaps(normalized, robots, this.fetchOpts);
@@ -182,6 +197,63 @@ export class HttpSource implements Source {
     for (const item of buffered) yield item;
   }
 
+  private async *iterFromLlmsIndex(
+    entries: LlmsIndexEntry[],
+  ): AsyncIterable<SourceItem> {
+    const robotsByOrigin = new Map<string, { isAllowed(url: string, ua: string): boolean }>();
+    const limited = entries.slice(0, this.crawlOpts.maxPages);
+    const buffered: SourceItem[] = [];
+    const queue = new PQueue({ concurrency: this.crawlOpts.concurrency });
+    const ua = this.crawlOpts.userAgent;
+    const tasks = limited.map((entry) => async () => {
+      try {
+        const linkOrigin = new URL(entry.url).origin;
+        let robots = robotsByOrigin.get(linkOrigin);
+        if (!robots) {
+          robots = await getRobots(linkOrigin, this.fetchOpts);
+          robotsByOrigin.set(linkOrigin, robots);
+        }
+        if (!robots.isAllowed(entry.url, ua)) {
+          this.skippedCount += 1;
+          return;
+        }
+        const res = await fetchUrl(entry.url, this.fetchOpts);
+        const ct = res.contentType.toLowerCase();
+        const isHtml = /^text\/html/.test(ct);
+        const isMarkdown = /^text\/(markdown|x-markdown)/.test(ct);
+        if (!isHtml && !isMarkdown) {
+          this.skippedCount += 1;
+          return;
+        }
+        const item: SourceItem = {
+          key: pathFromUrl(entry.url),
+          srcUri: entry.url,
+          bytes: res.bytes,
+          contentType: res.contentType,
+          outputKey: hostPrefixedKey(entry.url),
+        };
+        if (isMarkdown) item.kind = "markdown";
+        buffered.push(item);
+      } catch (e) {
+        if (e instanceof FetchError) {
+          log("debug", `llms-index fetch fail ${entry.url}: ${e.message}`);
+          buffered.push({
+            key: pathFromUrl(entry.url),
+            srcUri: entry.url,
+            bytes: Buffer.alloc(0),
+            contentType: "",
+            error: e.message,
+            outputKey: hostPrefixedKey(entry.url),
+          });
+          return;
+        }
+        throw e;
+      }
+    });
+    await queue.addAll(tasks);
+    for (const item of buffered) yield item;
+  }
+
   private async *iterFromBfs(
     robots: { isAllowed(url: string, ua: string): boolean; getCrawlDelay(ua: string): number; getSitemaps(): string[] },
   ): AsyncIterable<SourceItem> {
@@ -215,4 +287,20 @@ function pathFromUrl(url: string): string {
   const p = decodeURIComponent(u.pathname);
   if (p === "" || p === "/") return "index.html";
   return p.replace(/^\/+/, "");
+}
+
+function hostPrefixedKey(url: string): string {
+  const u = new URL(url);
+  const host = u.hostname.toLowerCase();
+  let path = decodeURIComponent(u.pathname);
+  if (path.endsWith("/") || path === "") path = `${path}index.md`;
+  else if (/\.html?$/i.test(path)) path = path.replace(/\.html?$/i, ".md");
+  else if (/\.md$/i.test(path)) { /* already .md */ }
+  else path = `${path}.md`;
+  const sanitized = path.split("/").map(safeSeg).filter(Boolean).join("/");
+  return `${host}/${sanitized}`;
+}
+
+function safeSeg(seg: string): string {
+  return seg.replace(/[<>:"|?*\0]/g, "_");
 }

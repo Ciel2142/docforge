@@ -120,12 +120,18 @@ Add to your `mcpServers` config:
 
 ### Tools
 
-- **`convert(url, corpus?, kind?, llms_full?, selector?, ...)`** — fetch a
-  URL and write Markdown under `$DOCFORGE_QMD_ROOT/<collection>/`. Detects
-  llms-full.txt by default, falls back to site crawl. Returns the first-page
-  Markdown preview, on-disk collection path, per-page listing, and any
-  extraction warnings.
-  `kind` accepts `auto` (default), `page`, `site`, or `llms-full`.
+- **`convert(url, corpus?, kind?, llms_full?, llms_index?, selector?, ...)`** —
+  fetch a URL and write Markdown under `$DOCFORGE_QMD_ROOT/<collection>/`.
+  Detects llms-full.txt by default, then llms.txt (curated index), falls
+  back to single-page or site crawl. Returns the first-page Markdown
+  preview, on-disk collection path, per-page listing, and any extraction
+  warnings.
+  `kind` accepts `auto` (default), `page`, `site`, `llms-full`, or
+  `llms-index`. `kind=page` fetches the seed URL only (skipping sitemap
+  discovery). `kind=llms-index` fetches every link in `/llms.txt`, writing
+  one file per link under `<host>/<path>.md` so cross-origin links never
+  collide. Markdown links (`text/markdown`) pass through verbatim;
+  HTML links are converted via Defuddle.
 - **`convert_openapi(source, is_inline?, format?, corpus?, ...)`** — same
   shape, accepts either a spec URL or an inline JSON/YAML string.
 - **`list_corpora(filter?)`** — enumerate `.docforge.json` manifests under

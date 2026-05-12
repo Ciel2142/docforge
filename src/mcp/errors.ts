@@ -4,6 +4,7 @@ export type ErrorCode =
   | "ROBOTS_BLOCKED"
   | "SOURCE_MISMATCH"
   | "LLMS_FULL_MISSING"
+  | "LLMS_INDEX_MISSING"
   | "OPENAPI_PARSE"
   | "FETCH_FAILED"
   | "WRITE_FAILED"

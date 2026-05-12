@@ -13,7 +13,7 @@ export const MANIFEST_FILE = ".docforge.json";
 const FAILURES_FILE = ".docforge.failures.log";
 const MANIFEST_VERSION = 1 as const;
 
-export type CorpusKind = "page" | "site" | "llms-full" | "openapi";
+export type CorpusKind = "page" | "site" | "llms-full" | "llms-index" | "openapi";
 
 export interface Manifest {
   version: 1;
@@ -46,7 +46,7 @@ function isManifest(value: unknown): value is Manifest {
     m.version === MANIFEST_VERSION &&
     typeof m.collection === "string" &&
     typeof m.source_url === "string" &&
-    (m.kind === "page" || m.kind === "site" || m.kind === "llms-full" || m.kind === "openapi") &&
+    (m.kind === "page" || m.kind === "site" || m.kind === "llms-full" || m.kind === "llms-index" || m.kind === "openapi") &&
     typeof m.last_run === "string" &&
     typeof m.page_count === "number" &&
     typeof m.sha === "string" &&
