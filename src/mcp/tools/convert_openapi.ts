@@ -106,139 +106,140 @@ export const convertOpenapiTool: ToolDefinition = {
 
     let specRef = args.source;
     let scratch: string | null = null;
-    if (args.is_inline) {
-      scratch = mkdtempSync(join(tmpdir(), "df-openapi-inline-"));
-      const ext = args.format === "json" ? "json" : "yaml";
-      specRef = join(scratch, `spec.${ext}`);
-      writeFileSync(specRef, args.source);
-    }
-
-    const fetchOpts: FetchOptions = {
-      userAgent: ctx.config.userAgent,
-      timeoutMs: 30_000,
-      maxBytes: 50 * 1024 * 1024,
-      cacheDir: ctx.config.cacheDir,
-    };
-
-    let openApiInfo: { title: string; version?: string } | undefined;
-    let parsedSpec: Record<string, unknown>;
     try {
-      parsedSpec = await loadSpecRef(specRef, isUrl(specRef), fetchOpts);
-      const info = parsedSpec["info"];
-      if (info && typeof info === "object") {
-        const infoObj = info as Record<string, unknown>;
-        const title = infoObj["title"];
-        if (typeof title === "string") {
-          openApiInfo = { title };
-          const version = infoObj["version"];
-          if (version !== undefined) openApiInfo.version = String(version);
-        }
+      if (args.is_inline) {
+        scratch = mkdtempSync(join(tmpdir(), "df-openapi-inline-"));
+        const ext = args.format === "json" ? "json" : "yaml";
+        specRef = join(scratch, `spec.${ext}`);
+        writeFileSync(specRef, args.source);
       }
-    } catch (e) {
-      if (scratch) rmSync(scratch, { recursive: true, force: true });
-      throw new McpError("OPENAPI_PARSE", (e as Error).message);
-    }
 
-    const collection = deriveCollectionName({
-      url: args.is_inline ? `file://${specRef}` : args.source,
-      ...(openApiInfo !== undefined ? { openApi: openApiInfo } : {}),
-      ...(args.corpus !== undefined ? { override: args.corpus } : {}),
-    });
-    const paths = collectionPaths(ctx.config.qmdRoot, collection);
+      const fetchOpts: FetchOptions = {
+        userAgent: ctx.config.userAgent,
+        timeoutMs: 30_000,
+        maxBytes: 50 * 1024 * 1024,
+        cacheDir: ctx.config.cacheDir,
+      };
 
-    const existing = readManifest(paths.final);
-    if (existing && !args.force_refresh && existing.source_url !== args.source) {
-      if (scratch) rmSync(scratch, { recursive: true, force: true });
-      throw new McpError(
-        "SOURCE_MISMATCH",
-        `collection "${collection}" already exists for ${existing.source_url}`,
-        "pass force_refresh=true to overwrite, or use a different corpus name",
-      );
-    }
+      let openApiInfo: { title: string; version?: string } | undefined;
+      let parsedSpec: Record<string, unknown>;
+      try {
+        parsedSpec = await loadSpecRef(specRef, isUrl(specRef), fetchOpts);
+        const info = parsedSpec["info"];
+        if (info && typeof info === "object") {
+          const infoObj = info as Record<string, unknown>;
+          const title = infoObj["title"];
+          if (typeof title === "string") {
+            openApiInfo = { title };
+            const version = infoObj["version"];
+            if (version !== undefined) openApiInfo.version = String(version);
+          }
+        }
+      } catch (e) {
+        throw new McpError("OPENAPI_PARSE", (e as Error).message);
+      }
 
-    const release = await ctx.locks.acquire(ctx.config.qmdRoot, collection);
-    try {
-      // Re-check inside lock to close TOCTOU race.
-      const lockedExisting = readManifest(paths.final);
-      if (lockedExisting && !args.force_refresh && lockedExisting.source_url !== args.source) {
+      const collection = deriveCollectionName({
+        url: args.is_inline ? `file://${specRef}` : args.source,
+        ...(openApiInfo !== undefined ? { openApi: openApiInfo } : {}),
+        ...(args.corpus !== undefined ? { override: args.corpus } : {}),
+      });
+      const paths = collectionPaths(ctx.config.qmdRoot, collection);
+
+      const existing = readManifest(paths.final);
+      if (existing && !args.force_refresh && existing.source_url !== args.source) {
         throw new McpError(
           "SOURCE_MISMATCH",
-          `collection "${collection}" already exists for ${lockedExisting.source_url}`,
+          `collection "${collection}" already exists for ${existing.source_url}`,
           "pass force_refresh=true to overwrite, or use a different corpus name",
         );
       }
 
-      if (existsSync(paths.tmp)) rmSync(paths.tmp, { recursive: true, force: true });
-      mkdirSync(paths.tmp, { recursive: true });
-
+      const release = await ctx.locks.acquire(ctx.config.qmdRoot, collection);
       try {
-        await runOpenapiPipeline({ source: specRef, outputDir: paths.tmp, fetchOptions: fetchOpts, spec: parsedSpec });
-      } catch (e) {
-        rmSync(paths.tmp, { recursive: true, force: true });
-        throw new McpError("OPENAPI_PARSE", (e as Error).message);
-      }
+        // Re-check inside lock to close TOCTOU race.
+        const lockedExisting = readManifest(paths.final);
+        if (lockedExisting && !args.force_refresh && lockedExisting.source_url !== args.source) {
+          throw new McpError(
+            "SOURCE_MISMATCH",
+            `collection "${collection}" already exists for ${lockedExisting.source_url}`,
+            "pass force_refresh=true to overwrite, or use a different corpus name",
+          );
+        }
 
-      const pages = listPages(paths.tmp);
-      if (pages.length === 0) {
-        rmSync(paths.tmp, { recursive: true, force: true });
-        throw new McpError("OPENAPI_PARSE", "spec produced no operations");
-      }
+        if (existsSync(paths.tmp)) rmSync(paths.tmp, { recursive: true, force: true });
+        mkdirSync(paths.tmp, { recursive: true });
 
-      const sha = computeCorpusSha(paths.tmp);
-      const manifest: Manifest = {
-        version: 1,
-        collection,
-        source_url: args.source,
-        kind: "openapi",
-        last_run: new Date().toISOString(),
-        page_count: pages.length,
-        sha,
-        docforge_version: VERSION,
-      };
-      writeManifest(paths.tmp, manifest);
-      try {
-        commitTmpToFinal(paths);
-      } catch (e) {
-        rmSync(paths.tmp, { recursive: true, force: true });
-        throw new McpError("WRITE_FAILED", (e as Error).message);
-      }
+        try {
+          await runOpenapiPipeline({ source: specRef, outputDir: paths.tmp, fetchOptions: fetchOpts, spec: parsedSpec });
+        } catch (e) {
+          rmSync(paths.tmp, { recursive: true, force: true });
+          throw new McpError("OPENAPI_PARSE", (e as Error).message);
+        }
 
-      const previewPath =
-        pages.find((p) => p.rel_path === "index.md")?.rel_path ??
-        pages[0]?.rel_path ??
-        "";
-      const previewLimit = clampPreviewBytes(args.preview_bytes);
-      const previewRaw = previewPath
-        ? readFileSync(join(paths.final, previewPath), "utf8")
-        : "";
-      const truncated = truncateMarkdown(previewRaw, previewLimit);
+        const pages = listPages(paths.tmp);
+        if (pages.length === 0) {
+          rmSync(paths.tmp, { recursive: true, force: true });
+          throw new McpError("OPENAPI_PARSE", "spec produced no operations");
+        }
 
-      const structuredContent = {
-        collection,
-        path: paths.final,
-        kind_resolved: "openapi" as const,
-        pages: pages.map((p) => ({
-          rel_path: p.rel_path,
-          title: p.rel_path,
+        const sha = computeCorpusSha(paths.tmp);
+        const manifest: Manifest = {
+          version: 1,
+          collection,
           source_url: args.source,
-          bytes: p.bytes,
-        })),
-        preview: {
-          rel_path: previewPath,
-          markdown: truncated.markdown,
-          truncated: truncated.truncated,
-        },
-        total_bytes: pages.reduce((s, p) => s + p.bytes, 0),
-        warnings: [] as string[],
-      };
+          kind: "openapi",
+          last_run: new Date().toISOString(),
+          page_count: pages.length,
+          sha,
+          docforge_version: VERSION,
+        };
+        writeManifest(paths.tmp, manifest);
+        try {
+          commitTmpToFinal(paths);
+        } catch (e) {
+          rmSync(paths.tmp, { recursive: true, force: true });
+          throw new McpError("WRITE_FAILED", (e as Error).message);
+        }
 
-      return {
-        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
-        structuredContent,
-      };
+        const previewPath =
+          pages.find((p) => p.rel_path === "index.md")?.rel_path ??
+          pages[0]?.rel_path ??
+          "";
+        const previewLimit = clampPreviewBytes(args.preview_bytes);
+        const previewRaw = previewPath
+          ? readFileSync(join(paths.final, previewPath), "utf8")
+          : "";
+        const truncated = truncateMarkdown(previewRaw, previewLimit);
+
+        const structuredContent = {
+          collection,
+          path: paths.final,
+          kind_resolved: "openapi" as const,
+          pages: pages.map((p) => ({
+            rel_path: p.rel_path,
+            title: p.rel_path,
+            source_url: args.source,
+            bytes: p.bytes,
+          })),
+          preview: {
+            rel_path: previewPath,
+            markdown: truncated.markdown,
+            truncated: truncated.truncated,
+          },
+          total_bytes: pages.reduce((s, p) => s + p.bytes, 0),
+          warnings: [] as string[],
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+          structuredContent,
+        };
+      } finally {
+        await release();
+      }
     } finally {
       if (scratch) rmSync(scratch, { recursive: true, force: true });
-      await release();
     }
   },
 };

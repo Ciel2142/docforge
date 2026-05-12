@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,5 +54,22 @@ describe("convert_openapi tool", () => {
         ctx(),
       ),
     ).rejects.toMatchObject({ code: "OPENAPI_PARSE" });
+  });
+
+  test("inline spec — scratch tmp cleaned when corpus override is invalid", async () => {
+    const tmpDirsBefore = readdirSync(tmpdir()).filter(d => d.startsWith("df-openapi-inline-"));
+    await expect(
+      convertOpenapiTool.handler(
+        {
+          source: '{"openapi":"3.0.0","info":{"title":"X","version":"1.0"},"paths":{}}',
+          is_inline: true,
+          format: "json",
+          corpus: "../etc",
+        },
+        ctx(),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_CORPUS_NAME" });
+    const tmpDirsAfter = readdirSync(tmpdir()).filter(d => d.startsWith("df-openapi-inline-"));
+    expect(tmpDirsAfter.length).toBe(tmpDirsBefore.length);
   });
 });
