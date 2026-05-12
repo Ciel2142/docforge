@@ -7,6 +7,7 @@ import { convertOpenapiTool } from "../../src/mcp/tools/convert_openapi.js";
 import { LockManager } from "../../src/mcp/locks.js";
 import { MANIFEST_FILE } from "../../src/mcp/manifest.js";
 import { startStub } from "./helpers/http-stub.js";
+import { toErrorEnvelope } from "../../src/mcp/errors.js";
 
 let qmdRoot: string;
 beforeEach(() => { qmdRoot = mkdtempSync(join(tmpdir(), "df-codes-")); });
@@ -118,6 +119,26 @@ describe("error codes", () => {
       // map the error in convert.ts' catch block accordingly.
     } finally {
       await stub.close();
+    }
+  });
+
+  test("INVALID_CORPUS_NAME — envelope maps correctly (wire path)", async () => {
+    try {
+      await convertTool.handler({ url: "https://x.com/", corpus: "../etc" }, ctx());
+      throw new Error("expected handler to reject");
+    } catch (e) {
+      const env = toErrorEnvelope(e);
+      expect(env).toMatchObject({ isError: true, code: "INVALID_CORPUS_NAME" });
+    }
+  });
+
+  test("INVALID_URL — envelope maps correctly (wire path)", async () => {
+    try {
+      await convertTool.handler({ url: "ftp://x.com/" }, ctx());
+      throw new Error("expected handler to reject");
+    } catch (e) {
+      const env = toErrorEnvelope(e);
+      expect(env).toMatchObject({ isError: true, code: "INVALID_URL" });
     }
   });
 });

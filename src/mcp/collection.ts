@@ -1,18 +1,17 @@
 import { basename } from "node:path";
+import { McpError } from "./errors.js";
 
 export const COLLECTION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
-export class CollectionNameError extends Error {
-  readonly code = "INVALID_CORPUS_NAME";
+export class CollectionNameError extends McpError {
   constructor(value: string, reason: string) {
-    super(`INVALID_CORPUS_NAME: "${value}" — ${reason}`);
+    super("INVALID_CORPUS_NAME", `INVALID_CORPUS_NAME: "${value}" — ${reason}`);
   }
 }
 
-export class InvalidUrlError extends Error {
-  readonly code = "INVALID_URL";
+export class InvalidUrlError extends McpError {
   constructor(value: string, reason: string) {
-    super(`INVALID_URL: "${value}" — ${reason}`);
+    super("INVALID_URL", `INVALID_URL: "${value}" — ${reason}`);
   }
 }
 
