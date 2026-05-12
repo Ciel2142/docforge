@@ -205,8 +205,14 @@ export class HttpSource implements Source {
     const buffered: SourceItem[] = [];
     const queue = new PQueue({ concurrency: this.crawlOpts.concurrency });
     const ua = this.crawlOpts.userAgent;
+    const deny = this.crawlOpts.excludeHosts ?? [];
     const tasks = limited.map((entry) => async () => {
       try {
+        const linkHost = new URL(entry.url).hostname.toLowerCase();
+        if (isHostDenied(linkHost, deny)) {
+          this.skippedCount += 1;
+          return;
+        }
         const linkOrigin = new URL(entry.url).origin;
         let robots = robotsByOrigin.get(linkOrigin);
         if (!robots) {
@@ -303,4 +309,15 @@ function hostPrefixedKey(url: string): string {
 
 function safeSeg(seg: string): string {
   return seg.replace(/[<>:"|?*\0]/g, "_");
+}
+
+export function isHostDenied(host: string, deny: readonly string[]): boolean {
+  const h = host.toLowerCase();
+  for (const raw of deny) {
+    const x = raw.toLowerCase().trim();
+    if (!x) continue;
+    if (h === x) return true;
+    if (h.endsWith("." + x)) return true;
+  }
+  return false;
 }

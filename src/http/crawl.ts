@@ -13,6 +13,7 @@ export interface CrawlOptions {
   llmsFullMode: "auto" | "force" | "off";
   llmsIndexMode?: "auto" | "force" | "off";
   singlePage?: boolean;
+  excludeHosts?: string[];
 }
 
 export interface CrawlItem {

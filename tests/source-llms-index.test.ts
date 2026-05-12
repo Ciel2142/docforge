@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { HttpSource } from "../src/source.js";
+import { HttpSource, isHostDenied } from "../src/source.js";
 import { __clearRobotsCache } from "../src/http/robots.js";
 
 let server: Server;
@@ -41,6 +41,31 @@ const fetchOpts = (): { userAgent: string; timeoutMs: number; maxBytes: number; 
   timeoutMs: 1_000,
   maxBytes: 1_000_000,
   cacheDir: null,
+});
+
+describe("isHostDenied", () => {
+  test("exact host match", () => {
+    expect(isHostDenied("linkedin.com", ["linkedin.com"])).toBe(true);
+    expect(isHostDenied("LinkedIn.com", ["linkedin.com"])).toBe(true);
+  });
+
+  test("matches subdomains via .suffix rule", () => {
+    expect(isHostDenied("www.linkedin.com", ["linkedin.com"])).toBe(true);
+    expect(isHostDenied("business.linkedin.com", ["linkedin.com"])).toBe(true);
+  });
+
+  test("does not match similar but unrelated hosts", () => {
+    expect(isHostDenied("evil-linkedin.com", ["linkedin.com"])).toBe(false);
+    expect(isHostDenied("notlinkedin.com", ["linkedin.com"])).toBe(false);
+  });
+
+  test("empty deny list is no-op", () => {
+    expect(isHostDenied("anything.com", [])).toBe(false);
+  });
+
+  test("ignores empty entries", () => {
+    expect(isHostDenied("foo.com", ["", "  ", "bar.com"])).toBe(false);
+  });
 });
 
 describe("HttpSource llms-index mode", () => {
@@ -185,6 +210,31 @@ describe("HttpSource llms-index mode", () => {
     const items = [];
     for await (const it of source.iter()) items.push(it);
     expect(items.map((i) => i.srcUri)).toEqual([`http://localhost:${port}/page.html`]);
+    expect(source.skippedCount).toBe(1);
+  });
+
+  test("excludeHosts skips URLs by host, exact + subdomain suffix match", async () => {
+    pages = {
+      "/llms.txt": {
+        status: 200,
+        ctype: "text/plain",
+        body: `# x\n\n- [Kept](http://localhost:${port}/keep.html)\n- [Drop](http://127.0.0.1:${port}/drop.html)\n`,
+      },
+      "/keep.html": { status: 200, ctype: "text/html", body: `<html>K</html>` },
+      "/drop.html": { status: 200, ctype: "text/html", body: `<html>D</html>` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/`,
+      fetchOpts(),
+      {
+        maxPages: 100, maxDepth: 10, concurrency: 1, userAgent: "t",
+        llmsFullMode: "off", llmsIndexMode: "auto",
+        excludeHosts: ["127.0.0.1"],
+      },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items.map((i) => i.srcUri)).toEqual([`http://localhost:${port}/keep.html`]);
     expect(source.skippedCount).toBe(1);
   });
 

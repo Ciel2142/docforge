@@ -30,6 +30,7 @@ interface ConvertArgs {
   user_agent?: string;
   force_refresh?: boolean;
   preview_bytes?: number;
+  exclude_hosts?: string[];
 }
 
 function parseArgs(raw: Record<string, unknown>): ConvertArgs {
@@ -61,6 +62,13 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
   if (typeof raw.user_agent === "string") args.user_agent = raw.user_agent;
   if (typeof raw.force_refresh === "boolean") args.force_refresh = raw.force_refresh;
   if (typeof raw.preview_bytes === "number") args.preview_bytes = raw.preview_bytes;
+  if (Array.isArray(raw.exclude_hosts)) {
+    const hosts: string[] = [];
+    for (const h of raw.exclude_hosts) {
+      if (typeof h === "string" && h.trim()) hosts.push(h.trim());
+    }
+    if (hosts.length > 0) args.exclude_hosts = hosts;
+  }
   return args;
 }
 
@@ -171,6 +179,11 @@ export const convertTool: ToolDefinition = {
       user_agent: { type: "string" },
       force_refresh: { type: "boolean", default: false },
       preview_bytes: { type: "integer" },
+      exclude_hosts: {
+        type: "array",
+        items: { type: "string" },
+        description: "skip URLs whose host matches any entry (exact or .suffix match). e.g. ['linkedin.com','discord.gg']",
+      },
     },
     required: ["url"],
     additionalProperties: false,
@@ -232,6 +245,7 @@ export const convertTool: ToolDefinition = {
           llmsFullMode: kind === "llms-full" ? "force" : "off",
           llmsIndexMode: kind === "llms-index" ? "force" : "off",
           singlePage: kind === "page",
+          ...(args.exclude_hosts ? { excludeHosts: args.exclude_hosts } : {}),
         },
       };
       if (args.selector !== undefined) pipelineOpts.selector = args.selector;
