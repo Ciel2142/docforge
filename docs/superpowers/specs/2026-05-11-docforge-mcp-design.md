@@ -51,7 +51,7 @@ in the same npm package. `package.json` gains a second `bin` entry:
 ```json
 "bin": {
   "docforge": "dist/bin.js",
-  "docforge-mcp": "dist/mcp/server.js"
+  "docforge-mcp": "dist/mcp/bin.js"
 }
 ```
 
@@ -578,7 +578,7 @@ by a local HTTP stub (e.g. vitest + a tiny Node server or `nock`):
 
 ### 8.4 MCP roundtrip smoke
 
-One end-to-end test: spawn `dist/mcp/server.js` as a child process, pipe
+One end-to-end test: spawn `dist/mcp/bin.js` as a child process, pipe
 JSON-RPC over stdio, send `initialize`, `tools/list`, and `tools/call convert`
 against the local fixture server. Assert that the structured tool result
 arrives with the expected schema. Proves wiring rather than pipeline behaviour
