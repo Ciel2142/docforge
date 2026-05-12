@@ -96,7 +96,7 @@ your `PATH` alongside `docforge`.
 The server needs one required env var:
 
 - `DOCFORGE_QMD_ROOT` — base directory where converted corpora are written
-  (one subdirectory per collection). Auto-created if missing.
+  (one subdirectory per collection). Auto-created on first start if the parent directory is writable.
 
 Optional env vars: `DOCFORGE_CACHE_DIR`, `DOCFORGE_USER_AGENT`,
 `DOCFORGE_MAX_PAGES`, `DOCFORGE_MAX_DEPTH`, `DOCFORGE_CONCURRENCY`.
@@ -125,6 +125,7 @@ Add to your `mcpServers` config:
   llms-full.txt by default, falls back to site crawl. Returns the first-page
   Markdown preview, on-disk collection path, per-page listing, and any
   extraction warnings.
+  `kind` accepts `auto` (default), `page`, `site`, or `llms-full`.
 - **`convert_openapi(source, is_inline?, format?, corpus?, ...)`** — same
   shape, accepts either a spec URL or an inline JSON/YAML string.
 - **`list_corpora(filter?)`** — enumerate `.docforge.json` manifests under
