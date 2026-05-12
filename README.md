@@ -122,8 +122,9 @@ Add to your `mcpServers` config:
 
 - **`convert(url, corpus?, kind?, llms_full?, selector?, ...)`** — fetch a
   URL and write Markdown under `$DOCFORGE_QMD_ROOT/<collection>/`. Detects
-  llms-full.txt by default, falls back to site crawl. Returns first-page
-  preview + on-disk path + page manifest.
+  llms-full.txt by default, falls back to site crawl. Returns the first-page
+  Markdown preview, on-disk collection path, per-page listing, and any
+  extraction warnings.
 - **`convert_openapi(source, is_inline?, format?, corpus?, ...)`** — same
   shape, accepts either a spec URL or an inline JSON/YAML string.
 - **`list_corpora(filter?)`** — enumerate `.docforge.json` manifests under
