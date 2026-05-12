@@ -1,5 +1,5 @@
 {
   "dolt_mode": "server",
   "dolt_server_host": "192.168.1.34",
-  "dolt_database": "beads"
+  "dolt_database": "beads_docforge"
 }
