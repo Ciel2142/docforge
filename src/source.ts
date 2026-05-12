@@ -65,6 +65,35 @@ export class HttpSource implements Source {
     const normalized = normalizeUrl(this.rootUrl);
     if (!normalized) throw new Error(`invalid root url: ${this.rootUrl}`);
 
+    if (this.crawlOpts.singlePage) {
+      try {
+        const res = await fetchUrl(normalized, this.fetchOpts);
+        if (!/^text\/html/i.test(res.contentType)) {
+          this.skippedCount += 1;
+          return;
+        }
+        yield {
+          key: pathFromUrl(normalized),
+          srcUri: normalized,
+          bytes: res.bytes,
+          contentType: res.contentType,
+        };
+      } catch (e) {
+        if (e instanceof FetchError) {
+          yield {
+            key: pathFromUrl(normalized),
+            srcUri: normalized,
+            bytes: Buffer.alloc(0),
+            contentType: "",
+            error: e.message,
+          };
+          return;
+        }
+        throw e;
+      }
+      return;
+    }
+
     if (this.crawlOpts.llmsFullMode !== "off") {
       const llms = await probeLlmsFullTxt(normalized, this.fetchOpts);
       if (llms) {

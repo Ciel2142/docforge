@@ -103,4 +103,61 @@ describe("HttpSource", () => {
     ]);
     expect(source.skippedCount).toBeGreaterThanOrEqual(1); // .css filtered
   });
+
+  test("singlePage fetches seed only, bypassing sitemap.xml", async () => {
+    __clearRobotsCache();
+    pages = {
+      "/sitemap.xml": {
+        status: 200,
+        ctype: "application/xml",
+        body: `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>http://localhost:${port}/first.html</loc></url><url><loc>http://localhost:${port}/wanted.html</loc></url></urlset>`,
+      },
+      "/first.html": { status: 200, ctype: "text/html", body: `<html><body>FIRST</body></html>` },
+      "/wanted.html": { status: 200, ctype: "text/html", body: `<html><body>WANTED</body></html>` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/wanted.html`,
+      { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
+      { maxPages: 1, maxDepth: 10, concurrency: 1, userAgent: "t", llmsFullMode: "off", singlePage: true },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items).toHaveLength(1);
+    expect(items[0].srcUri).toBe(`http://localhost:${port}/wanted.html`);
+    expect(items[0].bytes.toString("utf8")).toContain("WANTED");
+  });
+
+  test("singlePage skips llms-full probe even when llmsFullMode=auto", async () => {
+    __clearRobotsCache();
+    pages = {
+      "/llms-full.txt": { status: 200, ctype: "text/plain", body: `# llms-full content` },
+      "/wanted.html": { status: 200, ctype: "text/html", body: `<html><body>WANTED</body></html>` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/wanted.html`,
+      { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
+      { maxPages: 1, maxDepth: 10, concurrency: 1, userAgent: "t", llmsFullMode: "auto", singlePage: true },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items).toHaveLength(1);
+    expect(items[0].srcUri).toBe(`http://localhost:${port}/wanted.html`);
+    expect(items[0].kind).toBeUndefined();
+  });
+
+  test("singlePage skips non-html content type", async () => {
+    __clearRobotsCache();
+    pages = {
+      "/binary.bin": { status: 200, ctype: "application/octet-stream", body: `garbage` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/binary.bin`,
+      { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
+      { maxPages: 1, maxDepth: 10, concurrency: 1, userAgent: "t", llmsFullMode: "off", singlePage: true },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items).toHaveLength(0);
+    expect(source.skippedCount).toBe(1);
+  });
 });

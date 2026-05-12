@@ -11,6 +11,7 @@ export interface CrawlOptions {
   concurrency: number;
   userAgent: string;
   llmsFullMode: "auto" | "force" | "off";
+  singlePage?: boolean;
 }
 
 export interface CrawlItem {

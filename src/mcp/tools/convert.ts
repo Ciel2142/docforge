@@ -210,6 +210,7 @@ export const convertTool: ToolDefinition = {
           concurrency: args.concurrency ?? ctx.config.concurrency,
           userAgent: args.user_agent ?? ctx.config.userAgent,
           llmsFullMode: args.llms_full ?? "auto",
+          singlePage: kind === "page",
         },
       };
       if (args.selector !== undefined) pipelineOpts.selector = args.selector;
