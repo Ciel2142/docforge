@@ -80,6 +80,64 @@ npm run typecheck
 npx tsx src/bin.ts convert tests/fixtures --output /tmp/out
 ```
 
+## MCP server
+
+docforge ships a stdio MCP server that exposes three tools — `convert`,
+`convert_openapi`, and `list_corpora` — so coding agents (Claude Code,
+Cursor, etc.) can convert docs to Markdown on demand.
+
+### Install
+
+After `npm run build && npm install -g .`, the `docforge-mcp` binary is on
+your `PATH` alongside `docforge`.
+
+### Configure
+
+The server needs one required env var:
+
+- `DOCFORGE_QMD_ROOT` — base directory where converted corpora are written
+  (one subdirectory per collection). Auto-created if missing.
+
+Optional env vars: `DOCFORGE_CACHE_DIR`, `DOCFORGE_USER_AGENT`,
+`DOCFORGE_MAX_PAGES`, `DOCFORGE_MAX_DEPTH`, `DOCFORGE_CONCURRENCY`.
+
+### Claude Code example
+
+Add to your `mcpServers` config:
+
+```jsonc
+{
+  "mcpServers": {
+    "docforge": {
+      "command": "docforge-mcp",
+      "env": {
+        "DOCFORGE_QMD_ROOT": "/home/you/qmd/collections"
+      }
+    }
+  }
+}
+```
+
+### Tools
+
+- **`convert(url, corpus?, kind?, llms_full?, selector?, ...)`** — fetch a
+  URL and write Markdown under `$DOCFORGE_QMD_ROOT/<collection>/`. Detects
+  llms-full.txt by default, falls back to site crawl. Returns first-page
+  preview + on-disk path + page manifest.
+- **`convert_openapi(source, is_inline?, format?, corpus?, ...)`** — same
+  shape, accepts either a spec URL or an inline JSON/YAML string.
+- **`list_corpora(filter?)`** — enumerate `.docforge.json` manifests under
+  the root. Useful for "do I already have docs for this site?" before
+  re-crawling.
+
+Collection names are derived from the URL host + first path segment
+(slugified), with OpenAPI `info.title` preferred when present. Override
+with `corpus`. Re-running with the same `corpus` against a different
+source returns `SOURCE_MISMATCH` unless you pass `force_refresh=true`.
+
+See `docs/superpowers/specs/2026-05-11-docforge-mcp-design.md` for full
+schema and error-envelope reference.
+
 ## Design
 
 See `docs/superpowers/specs/2026-05-09-docforge-typescript-rewrite-design.md`.
