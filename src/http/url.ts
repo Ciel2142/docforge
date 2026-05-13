@@ -5,6 +5,15 @@ const DEFAULT_PORTS: Record<string, string> = {
   "https:": "443",
 };
 
+const PATH_SEGMENT_SAFE = /^[A-Za-z0-9\-._~!$&'()*+,;=:@]$/;
+
+function canonicalizePercentEncoding(s: string): string {
+  return s.replace(/%([0-9A-Fa-f]{2})/g, (match, hex: string) => {
+    const ch = String.fromCharCode(parseInt(hex, 16));
+    return PATH_SEGMENT_SAFE.test(ch) ? ch : `%${hex.toUpperCase()}`;
+  });
+}
+
 export function normalizeUrl(input: string, base?: string): string | null {
   let u: URL;
   try {
@@ -17,6 +26,7 @@ export function normalizeUrl(input: string, base?: string): string | null {
   u.search = "";
   if (u.port && DEFAULT_PORTS[u.protocol] === u.port) u.port = "";
   u.hostname = u.hostname.toLowerCase();
+  u.pathname = canonicalizePercentEncoding(u.pathname);
   return u.toString();
 }
 
