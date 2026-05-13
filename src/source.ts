@@ -2,6 +2,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { dirname, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { load as yamlLoad } from "js-yaml";
 import PQueue from "p-queue";
 
 import { iterHtmlFiles } from "./walk.js";
@@ -20,8 +21,74 @@ export interface SourceItem {
   bytes: Buffer;
   contentType: string;
   error?: string;          // set when fetch failed; convert loop counts as failed
-  kind?: "html" | "llms-full" | "markdown";
+  kind?: "html" | "llms-full" | "markdown" | "openapi";
   outputKey?: string;      // when set, runPipeline uses this for output path (host-prefixed for cross-origin)
+  spec?: Record<string, unknown>; // parsed OpenAPI 3.x spec when kind === "openapi"
+}
+
+function isPlainObject(x: unknown): x is Record<string, unknown> {
+  return x !== null && typeof x === "object" && !Array.isArray(x);
+}
+
+function isOpenapiCandidate(contentType: string, url: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (/^application\/(json|yaml|x-yaml)/.test(ct)) return true;
+  if (/^application\/vnd\.oai\.openapi(\+(json|yaml))?/.test(ct)) return true;
+  if (/^text\/(yaml|x-yaml)/.test(ct)) return true;
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    if (/\.(json|ya?ml)$/.test(path)) return true;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+function tryParseOpenapiSpec(
+  bytes: Buffer,
+  contentType: string,
+  url: string,
+): Record<string, unknown> | null {
+  const body = bytes.toString("utf8");
+  let parsed: unknown;
+  let urlPath = "";
+  try {
+    urlPath = new URL(url).pathname.toLowerCase();
+  } catch {
+    urlPath = "";
+  }
+  const ct = contentType.toLowerCase();
+  const looksJson = ct.includes("json") || /\.json$/i.test(urlPath);
+  try {
+    parsed = looksJson ? JSON.parse(body) : yamlLoad(body);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject(parsed)) return null;
+  if ("swagger" in parsed) return null; // 2.0 not supported
+  const version = parsed.openapi;
+  if (typeof version !== "string" || !version.startsWith("3.")) return null;
+  return parsed;
+}
+
+function maybeOpenapiItem(
+  url: string,
+  res: { bytes: Buffer; contentType: string },
+  outputKey?: string,
+): SourceItem | null {
+  if (!isOpenapiCandidate(res.contentType, url)) return null;
+  const spec = tryParseOpenapiSpec(res.bytes, res.contentType, url);
+  if (!spec) return null;
+  const item: SourceItem = {
+    key: pathFromUrl(url),
+    srcUri: url,
+    bytes: res.bytes,
+    contentType: res.contentType,
+    kind: "openapi",
+    spec,
+  };
+  if (outputKey) item.outputKey = outputKey;
+  return item;
 }
 
 export interface Source {
@@ -71,6 +138,11 @@ export class HttpSource implements Source {
       try {
         const res = await fetchUrl(normalized, this.fetchOpts);
         if (!/^text\/html/i.test(res.contentType)) {
+          const oa = maybeOpenapiItem(normalized, res);
+          if (oa) {
+            yield oa;
+            return;
+          }
           this.skippedCount += 1;
           return;
         }
@@ -169,6 +241,11 @@ export class HttpSource implements Source {
       try {
         const res = await fetchUrl(url, this.fetchOpts);
         if (!/^text\/html/i.test(res.contentType)) {
+          const oa = maybeOpenapiItem(url, res);
+          if (oa) {
+            buffered.push(oa);
+            return;
+          }
           this.skippedCount += 1;
           return;
         }
@@ -228,6 +305,11 @@ export class HttpSource implements Source {
         const isHtml = /^text\/html/.test(ct);
         const isMarkdown = /^text\/(markdown|x-markdown)/.test(ct);
         if (!isHtml && !isMarkdown) {
+          const oa = maybeOpenapiItem(entry.url, res, hostPrefixedKey(entry.url));
+          if (oa) {
+            buffered.push(oa);
+            return;
+          }
           this.skippedCount += 1;
           return;
         }
@@ -275,6 +357,14 @@ export class HttpSource implements Source {
         continue;
       }
       if (!/^text\/html/i.test(item.contentType)) {
+        const oa = maybeOpenapiItem(item.url, {
+          bytes: item.bytes,
+          contentType: item.contentType,
+        });
+        if (oa) {
+          yield oa;
+          continue;
+        }
         this.skippedCount += 1;
         continue;
       }

@@ -11,6 +11,7 @@ import {
   type ReportEntry,
 } from "./output.js";
 import { log } from "./log.js";
+import { runOpenapiPipeline } from "./openapi/pipeline.js";
 import { FilesystemSource, HttpSource, type Source, type SourceItem } from "./source.js";
 import type { FetchOptions } from "./http/fetch.js";
 import type { CrawlOptions } from "./http/crawl.js";
@@ -115,6 +116,47 @@ export async function runPipeline(
       writeOutput(outPath, md);
       converted += 1;
       report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
+      continue;
+    }
+
+    if (item.kind === "openapi") {
+      if (!item.spec) {
+        failed += 1;
+        log("error", `FAIL openapi ${item.key}: spec not pre-parsed`);
+        report.push({
+          input: item.key, srcUri: item.srcUri, output: null,
+          status: "failed", error: "spec not pre-parsed",
+        });
+        continue;
+      }
+      const specDir = outPath.replace(/(\.(json|ya?ml))?\.md$/i, "");
+      if (opts.dryRun) {
+        log("info", `DRY openapi ${item.key} -> ${specDir}/`);
+        continue;
+      }
+      try {
+        const oaResult = await runOpenapiPipeline({
+          source: item.srcUri,
+          outputDir: specDir,
+          spec: item.spec,
+        });
+        log(
+          "info",
+          `openapi ${item.key}: endpoints=${oaResult.endpoints} schemas=${oaResult.schemas}`,
+        );
+        converted += 1;
+        report.push({
+          input: item.key, srcUri: item.srcUri, output: specDir, status: "ok",
+        });
+      } catch (e) {
+        failed += 1;
+        const err = e instanceof Error ? e.message : String(e);
+        log("error", `FAIL openapi ${item.key}: ${err}`);
+        report.push({
+          input: item.key, srcUri: item.srcUri, output: null,
+          status: "failed", error: err,
+        });
+      }
       continue;
     }
 
