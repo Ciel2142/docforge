@@ -26,6 +26,7 @@ export interface FetchOptions {
   timeoutMs: number;
   maxBytes: number;
   cacheDir: string | null;
+  auth?: { header: string; origin: string };
 }
 
 let cached: { dir: string; client: Got } | null = null;
@@ -54,10 +55,15 @@ function makeClient(opts: FetchOptions): Got {
 
 export async function fetchUrl(url: string, opts: FetchOptions): Promise<FetchResult> {
   const client = makeClient(opts);
+  // url is always an absolute http(s) URL here (validated upstream), so `new URL` is safe.
+  const headers: Record<string, string> = { "user-agent": opts.userAgent };
+  if (opts.auth && new URL(url).origin === opts.auth.origin) {
+    headers.authorization = opts.auth.header;
+  }
   let res;
   try {
     res = await client.get(url, {
-      headers: { "user-agent": opts.userAgent },
+      headers,
       timeout: { request: opts.timeoutMs },
     });
   } catch (e) {
@@ -71,7 +77,11 @@ export async function fetchUrl(url: string, opts: FetchOptions): Promise<FetchRe
   }
 
   if (res.statusCode >= 400) {
-    throw new FetchError(`HTTP ${res.statusCode} for ${url}`, res.statusCode);
+    const authHint =
+      opts.auth && (res.statusCode === 401 || res.statusCode === 403)
+        ? " (auth header sent — check value)"
+        : "";
+    throw new FetchError(`HTTP ${res.statusCode} for ${url}${authHint}`, res.statusCode);
   }
   const body = Buffer.isBuffer(res.rawBody) ? res.rawBody : Buffer.from(res.rawBody);
   if (body.length > opts.maxBytes) {

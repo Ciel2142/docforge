@@ -9,7 +9,7 @@ import { fetchUrl, FetchError, type FetchOptions } from "../src/http/fetch.js";
 let server: Server;
 let port: number;
 let cacheDir: string;
-let hits: { method: string; url: string; ifNoneMatch?: string }[] = [];
+let hits: { method: string; url: string; ifNoneMatch?: string; authorization?: string }[] = [];
 
 beforeAll(async () => {
   cacheDir = mkdtempSync(join(tmpdir(), "docforge-fetch-"));
@@ -18,6 +18,7 @@ beforeAll(async () => {
       method: req.method ?? "GET",
       url: req.url ?? "",
       ifNoneMatch: req.headers["if-none-match"] as string | undefined,
+      authorization: req.headers["authorization"] as string | undefined,
     });
     const url = req.url ?? "";
     if (url === "/ok") {
@@ -51,6 +52,16 @@ beforeAll(async () => {
     if (url === "/5xx") {
       res.writeHead(503);
       res.end();
+      return;
+    }
+    if (url === "/needsauth") {
+      if (req.headers["authorization"] !== "Bearer testtoken") {
+        res.writeHead(401);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end("<html>secret</html>");
       return;
     }
     res.writeHead(500);
@@ -116,5 +127,60 @@ describe("fetchUrl", () => {
     await expect(
       fetchUrl(`http://localhost:${port}/slow`, opts({ cacheDir: null, timeoutMs: 50 })),
     ).rejects.toMatchObject({ name: "FetchError" });
+  });
+});
+
+describe("fetchUrl auth", () => {
+  test("attaches authorization header when request origin matches auth origin", async () => {
+    hits = [];
+    const origin = `http://localhost:${port}`;
+    await fetchUrl(`${origin}/ok`, opts({
+      cacheDir: null,
+      auth: { header: "Bearer testtoken", origin },
+    }));
+    const hit = hits.find((h) => h.url === "/ok");
+    expect(hit?.authorization).toBe("Bearer testtoken");
+  });
+
+  test("omits authorization header when request origin differs from auth origin", async () => {
+    hits = [];
+    await fetchUrl(`http://localhost:${port}/ok`, opts({
+      cacheDir: null,
+      auth: { header: "Bearer testtoken", origin: "http://other.example" },
+    }));
+    const hit = hits.find((h) => h.url === "/ok");
+    expect(hit?.authorization).toBeUndefined();
+  });
+
+  test("omits authorization header when no auth is configured", async () => {
+    hits = [];
+    await fetchUrl(`http://localhost:${port}/ok`, opts({ cacheDir: null }));
+    const hit = hits.find((h) => h.url === "/ok");
+    expect(hit?.authorization).toBeUndefined();
+  });
+
+  test("auth header unlocks a 401-guarded route", async () => {
+    const origin = `http://localhost:${port}`;
+    const result = await fetchUrl(`${origin}/needsauth`, opts({
+      cacheDir: null,
+      auth: { header: "Bearer testtoken", origin },
+    }));
+    expect(result.status).toBe(200);
+    expect(result.bytes.toString("utf8")).toBe("<html>secret</html>");
+  });
+
+  test("401 with auth set adds a hint to the error message", async () => {
+    const origin = `http://localhost:${port}`;
+    try {
+      await fetchUrl(`${origin}/needsauth`, opts({
+        cacheDir: null,
+        auth: { header: "Bearer wrongtoken", origin },
+      }));
+      throw new Error("expected fetchUrl to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(FetchError);
+      expect((e as FetchError).status).toBe(401);
+      expect((e as Error).message).toContain("auth header sent");
+    }
   });
 });
