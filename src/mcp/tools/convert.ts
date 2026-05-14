@@ -16,6 +16,7 @@ import type { ServerContext, ToolDefinition } from "../server.js";
 import { VERSION } from "../../index.js";
 import { probeLlmsFullTxt } from "../../http/llms.js";
 import { probeLlmsTxt } from "../../http/llms-index.js";
+import type { FetchOptions } from "../../http/fetch.js";
 
 interface ConvertArgs {
   url: string;
@@ -31,6 +32,7 @@ interface ConvertArgs {
   force_refresh?: boolean;
   preview_bytes?: number;
   exclude_hosts?: string[];
+  auth_header?: string;
 }
 
 function parseArgs(raw: Record<string, unknown>): ConvertArgs {
@@ -60,6 +62,7 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
   if (typeof raw.max_depth === "number") args.max_depth = raw.max_depth;
   if (typeof raw.concurrency === "number") args.concurrency = raw.concurrency;
   if (typeof raw.user_agent === "string") args.user_agent = raw.user_agent;
+  if (typeof raw.auth_header === "string" && raw.auth_header) args.auth_header = raw.auth_header;
   if (typeof raw.force_refresh === "boolean") args.force_refresh = raw.force_refresh;
   if (typeof raw.preview_bytes === "number") args.preview_bytes = raw.preview_bytes;
   if (Array.isArray(raw.exclude_hosts)) {
@@ -93,11 +96,14 @@ export function resolveKindFromUrl(url: string): CorpusKind {
 
 async function resolveKind(args: ConvertArgs, userAgent: string): Promise<CorpusKind> {
   if (args.kind && args.kind !== "auto") return args.kind;
-  const probeOpts = {
+  const probeOpts: FetchOptions = {
     userAgent,
     timeoutMs: 10_000,
     maxBytes: 10 * 1024 * 1024,
     cacheDir: null,
+    ...(args.auth_header
+      ? { auth: { header: args.auth_header, origin: new URL(args.url).origin } }
+      : {}),
   };
   const fullMode = args.llms_full ?? "auto";
   if (fullMode !== "off") {
@@ -177,6 +183,10 @@ export const convertTool: ToolDefinition = {
       max_depth: { type: "integer", minimum: 1 },
       concurrency: { type: "integer", minimum: 1 },
       user_agent: { type: "string" },
+      auth_header: {
+        type: "string",
+        description: "Authorization header value, sent only to the root URL's origin. Warning: appears in the tool-call transcript.",
+      },
       force_refresh: { type: "boolean", default: false },
       preview_bytes: { type: "integer" },
       exclude_hosts: {
@@ -236,6 +246,9 @@ export const convertTool: ToolDefinition = {
           timeoutMs: 30_000,
           maxBytes: 10 * 1024 * 1024,
           cacheDir: ctx.config.cacheDir,
+          ...(args.auth_header
+            ? { auth: { header: args.auth_header, origin: new URL(args.url).origin } }
+            : {}),
         },
         crawlOptions: {
           maxPages: kind === "page" ? 1 : (args.max_pages ?? ctx.config.maxPages),

@@ -160,3 +160,34 @@ describe("resolveKindFromUrl (pure unit)", () => {
     expect(resolveKindFromUrl("http://example.com/page.HTML")).toBe("page");
   });
 });
+
+describe("convert tool auth_header", () => {
+  test("threads Authorization header into the page fetch", async () => {
+    const res = await convertTool.handler(
+      { url: stub.url, kind: "page", auth_header: "Bearer sekret" },
+      ctx(),
+    );
+    expect((res.structuredContent as any).pages.length).toBe(1);
+    const rootReq = stub.requests.find((r) => r.path === "/");
+    expect(rootReq?.authorization).toBe("Bearer sekret");
+  });
+
+  test("threads Authorization header into the llms-full.txt probe", async () => {
+    await convertTool.handler(
+      { url: stub.url, auth_header: "Bearer sekret" },
+      ctx(),
+    );
+    const probeReq = stub.requests.find((r) => r.path === "/llms-full.txt");
+    expect(probeReq).toBeDefined();
+    expect(probeReq?.authorization).toBe("Bearer sekret");
+  });
+
+  test("ignores an empty auth_header (no Authorization header sent)", async () => {
+    await convertTool.handler(
+      { url: stub.url, kind: "page", auth_header: "" },
+      ctx(),
+    );
+    const rootReq = stub.requests.find((r) => r.path === "/");
+    expect(rootReq?.authorization).toBeUndefined();
+  });
+});
