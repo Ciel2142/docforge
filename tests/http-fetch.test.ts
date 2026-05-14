@@ -183,4 +183,18 @@ describe("fetchUrl auth", () => {
       expect((e as Error).message).toContain("auth header sent");
     }
   });
+
+  test("omits the auth hint on 401 when request origin does not match auth origin", async () => {
+    try {
+      await fetchUrl(`http://localhost:${port}/needsauth`, opts({
+        cacheDir: null,
+        auth: { header: "Bearer testtoken", origin: "http://other.example" },
+      }));
+      throw new Error("expected fetchUrl to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(FetchError);
+      expect((e as FetchError).status).toBe(401);
+      expect((e as Error).message).not.toContain("auth header sent");
+    }
+  });
 });

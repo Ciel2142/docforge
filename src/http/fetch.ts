@@ -56,8 +56,9 @@ function makeClient(opts: FetchOptions): Got {
 export async function fetchUrl(url: string, opts: FetchOptions): Promise<FetchResult> {
   const client = makeClient(opts);
   // url is always an absolute http(s) URL here (validated upstream), so `new URL` is safe.
+  const requestOrigin = new URL(url).origin;
   const headers: Record<string, string> = { "user-agent": opts.userAgent };
-  if (opts.auth && new URL(url).origin === opts.auth.origin) {
+  if (opts.auth && requestOrigin === opts.auth.origin) {
     headers.authorization = opts.auth.header;
   }
   let res;
@@ -78,7 +79,9 @@ export async function fetchUrl(url: string, opts: FetchOptions): Promise<FetchRe
 
   if (res.statusCode >= 400) {
     const authHint =
-      opts.auth && (res.statusCode === 401 || res.statusCode === 403)
+      opts.auth &&
+      requestOrigin === opts.auth.origin &&
+      (res.statusCode === 401 || res.statusCode === 403)
         ? " (auth header sent — check value)"
         : "";
     throw new FetchError(`HTTP ${res.statusCode} for ${url}${authHint}`, res.statusCode);
