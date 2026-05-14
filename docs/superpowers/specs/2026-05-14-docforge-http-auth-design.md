@@ -171,3 +171,13 @@ superseded. `fetchUrl` now routes any request that carries the auth header
 written to or read from the shared on-disk cache. The trade-off the original spec
 named — authed crawls lose ETag revalidation and re-fetch every page each run — was
 accepted to close the cross-auth cache-bleed exposure.
+
+
+### docf-sbf — sitemap auth is explicit, not automatic (2026-05-14)
+
+§1 (*Core*) stated `auth` "threads through automatically" to all `fetch` sites,
+and the call-site list implied `sitemap` reaches the network through `fetchUrl`.
+That was inaccurate: `src/http/sitemap.ts` drives `Sitemapper`, a separate HTTP
+client, and never calls `fetchUrl`. `fetchSitemap` now adds an origin-gated
+`authorization` entry to the `Sitemapper` `requestHeaders` itself, mirroring the
+`fetchUrl` origin gate.

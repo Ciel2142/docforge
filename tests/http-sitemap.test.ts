@@ -7,13 +7,23 @@ import type { FetchOptions } from "../src/http/fetch.js";
 
 let server: Server;
 let port: number;
-let routes: Record<string, { status: number; body?: string }> = {};
+let routes: Record<string, { status: number; body?: string; requireAuth?: string }> = {};
+let hits: { url: string; authorization?: string }[] = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => {
+    hits.push({
+      url: req.url ?? "",
+      authorization: req.headers["authorization"] as string | undefined,
+    });
     const r = routes[req.url ?? ""];
     if (!r) {
       res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (r.requireAuth && req.headers["authorization"] !== r.requireAuth) {
+      res.writeHead(401);
       res.end();
       return;
     }
@@ -106,5 +116,53 @@ describe("discoverSitemaps", () => {
       fetchOpts(),
     );
     expect(urls).toEqual([]);
+  });
+});
+
+describe("discoverSitemaps auth", () => {
+  test("forwards the auth header to an auth-gated sitemap on the matching origin", async () => {
+    hits = [];
+    const origin = `http://localhost:${port}`;
+    routes = {
+      "/sitemap.xml": {
+        status: 200,
+        body: sitemapXml([`${origin}/a`]),
+        requireAuth: "Bearer testtoken",
+      },
+    };
+    const urls = await discoverSitemaps(`${origin}/`, robotsWith([]), {
+      ...fetchOpts(),
+      auth: { header: "Bearer testtoken", origin },
+    });
+    expect(urls).toEqual([`${origin}/a`]);
+    const hit = hits.find((h) => h.url === "/sitemap.xml");
+    expect(hit?.authorization).toBe("Bearer testtoken");
+  });
+
+  test("omits the auth header when the sitemap origin does not match the auth origin", async () => {
+    hits = [];
+    const origin = `http://localhost:${port}`;
+    routes = {
+      "/sitemap.xml": { status: 200, body: sitemapXml([`${origin}/x`]) },
+    };
+    await discoverSitemaps(`${origin}/`, robotsWith([]), {
+      ...fetchOpts(),
+      auth: { header: "Bearer testtoken", origin: "http://other.example" },
+    });
+    const hit = hits.find((h) => h.url === "/sitemap.xml");
+    expect(hit?.authorization).toBeUndefined();
+  });
+
+  test("skips a malformed robots-declared sitemap URL and falls through to /sitemap.xml", async () => {
+    hits = [];
+    const origin = `http://localhost:${port}`;
+    routes = {
+      "/sitemap.xml": { status: 200, body: sitemapXml([`${origin}/ok`]) },
+    };
+    const urls = await discoverSitemaps(`${origin}/`, robotsWith(["not a valid url"]), {
+      ...fetchOpts(),
+      auth: { header: "Bearer testtoken", origin },
+    });
+    expect(urls).toEqual([`${origin}/ok`]);
   });
 });

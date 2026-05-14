@@ -24,12 +24,15 @@ export async function discoverSitemaps(
 }
 
 async function fetchSitemap(url: string, opts: FetchOptions): Promise<string[]> {
-  const sm = new Sitemapper({
-    url,
-    timeout: opts.timeoutMs,
-    requestHeaders: { "user-agent": opts.userAgent },
-  });
   try {
+    const requestHeaders: Record<string, string> = { "user-agent": opts.userAgent };
+    // Sitemapper is a separate HTTP client and never goes through fetchUrl, so
+    // the auth header has to be attached here too — origin-gated, mirroring the
+    // gate in fetchUrl (docf-sbf).
+    if (opts.auth && new URL(url).origin === opts.auth.origin) {
+      requestHeaders.authorization = opts.auth.header;
+    }
+    const sm = new Sitemapper({ url, timeout: opts.timeoutMs, requestHeaders });
     const { sites } = await sm.fetch();
     return sites ?? [];
   } catch {
