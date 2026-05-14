@@ -32,7 +32,7 @@ export interface FetchOptions {
 let cached: { dir: string; client: Got } | null = null;
 let nocacheClient: Got | null = null;
 
-function makeClient(opts: FetchOptions): Got {
+function makeClient(opts: FetchOptions, bypassCache = false): Got {
   const base: OptionsOfTextResponseBody = {
     headers: { "user-agent": opts.userAgent },
     timeout: { request: opts.timeoutMs },
@@ -41,7 +41,7 @@ function makeClient(opts: FetchOptions): Got {
     responseType: "buffer" as unknown as "text",
     decompress: true,
   };
-  if (opts.cacheDir === null) {
+  if (opts.cacheDir === null || bypassCache) {
     if (!nocacheClient) nocacheClient = got.extend(base);
     return nocacheClient;
   }
@@ -54,13 +54,18 @@ function makeClient(opts: FetchOptions): Got {
 }
 
 export async function fetchUrl(url: string, opts: FetchOptions): Promise<FetchResult> {
-  const client = makeClient(opts);
   // url is always an absolute http(s) URL here (validated upstream), so `new URL` is safe.
   const requestOrigin = new URL(url).origin;
   const headers: Record<string, string> = { "user-agent": opts.userAgent };
+  let authed = false;
   if (opts.auth && requestOrigin === opts.auth.origin) {
     headers.authorization = opts.auth.header;
+    authed = true;
   }
+  // An authed request bypasses the shared response cache: got keys cache entries
+  // by URL only, so a cached auth-gated body could otherwise be served to a later
+  // unauthenticated fetch of the same URL (docf-plx).
+  const client = makeClient(opts, authed);
   let res;
   try {
     res = await client.get(url, {

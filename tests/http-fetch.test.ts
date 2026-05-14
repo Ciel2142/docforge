@@ -64,6 +64,19 @@ beforeAll(async () => {
       res.end("<html>secret</html>");
       return;
     }
+    if (url === "/auth-cacheable") {
+      if (req.headers["authorization"] !== "Bearer testtoken") {
+        res.writeHead(401);
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+      });
+      res.end("<html>secret</html>");
+      return;
+    }
     res.writeHead(500);
     res.end();
   });
@@ -195,6 +208,51 @@ describe("fetchUrl auth", () => {
       expect(e).toBeInstanceOf(FetchError);
       expect((e as FetchError).status).toBe(401);
       expect((e as Error).message).not.toContain("auth header sent");
+    }
+  });
+});
+
+describe("fetchUrl auth cache", () => {
+  test("an authed response is not persisted to a shared cache dir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "docforge-authcache-"));
+    try {
+      const origin = `http://localhost:${port}`;
+      const url = `${origin}/auth-cacheable`;
+      // authed fetch succeeds but must NOT write to the on-disk cache
+      const authed = await fetchUrl(
+        url,
+        opts({ cacheDir: dir, auth: { header: "Bearer testtoken", origin } }),
+      );
+      expect(authed.status).toBe(200);
+      expect(authed.fromCache).toBe(false);
+      // a later unauthenticated fetch of the same URL + same cache dir must hit
+      // the server (401) — it must NOT be served the cached auth-gated body
+      await expect(
+        fetchUrl(url, opts({ cacheDir: dir })),
+      ).rejects.toMatchObject({ name: "FetchError", status: 401 });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("non-auth-origin requests still use the cache when auth is configured", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "docforge-authcache-"));
+    try {
+      const url = `http://localhost:${port}/ok`;
+      // auth is configured for a DIFFERENT origin, so this request is not authed
+      // and the response cache still applies (regression guard: the bypass must
+      // stay origin-gated, not trigger whenever opts.auth merely exists)
+      const o = () =>
+        opts({
+          cacheDir: dir,
+          auth: { header: "Bearer testtoken", origin: "http://other.example" },
+        });
+      const first = await fetchUrl(url, o());
+      expect(first.fromCache).toBe(false);
+      const second = await fetchUrl(url, o());
+      expect(second.fromCache).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

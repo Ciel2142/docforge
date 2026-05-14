@@ -158,3 +158,16 @@ the leak becomes a problem.
 - Auth on the OpenAPI entry points (CLI `openapi`, MCP `convert_openapi`).
 - Per-origin / multi-origin credential maps.
 - Cache-key partitioning by `Authorization`.
+
+
+## Post-implementation corrections
+
+### docf-plx — response cache bypassed for authed requests (2026-05-14)
+
+The "Cache: unchanged" note (§3 *Error handling + redirects*) and the rejected
+"bypass the response cache whenever auth is set" alternative (§*Approach*) are
+superseded. `fetchUrl` now routes any request that carries the auth header
+(origin-matched) through the no-cache `got` client, so an auth-gated body is never
+written to or read from the shared on-disk cache. The trade-off the original spec
+named — authed crawls lose ETag revalidation and re-fetch every page each run — was
+accepted to close the cross-auth cache-bleed exposure.
