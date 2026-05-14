@@ -40,6 +40,7 @@ export function buildProgram(): Command {
     .option("--cache-dir <path>", "ETag cache directory (URL source only)", DEFAULT_CACHE_DIR)
     .option("--no-cache", "disable ETag cache (URL source only)")
     .option("--user-agent <str>", "User-Agent header (URL source only)", DEFAULT_USER_AGENT)
+    .option("--auth-header <value>", "Authorization header value sent to the root origin (URL source only). Warning: visible in process list and shell history.")
     .option("--selector <css>", "CSS selector override for body extraction (Defuddle contentSelector)")
     .option("--llms-full <mode>", "llms-full.txt mode: auto|force|off (URL source only)", "auto")
     .action(async (source: string, opts: ConvertOpts) => {
@@ -66,6 +67,7 @@ interface ConvertOpts {
   userAgent: string;
   selector?: string | undefined;
   llmsFull: string;
+  authHeader?: string | undefined;
 }
 
 function isUrl(s: string): boolean {
@@ -104,6 +106,12 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       maxBytes,
       cacheDir: opts.cache ? expandHome(opts.cacheDir) : null,
     };
+    if (opts.authHeader) {
+      pipelineOpts.fetchOptions.auth = {
+        header: opts.authHeader,
+        origin: new URL(sourceArg).origin,
+      };
+    }
     pipelineOpts.crawlOptions = {
       maxPages: parseInt(opts.maxPages, 10),
       maxDepth: parseInt(opts.maxDepth, 10),
