@@ -3,7 +3,7 @@ import { basename, extname, resolve } from "node:path";
 
 import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
-import { rewriteInternalLinks } from "./links.js";
+import { rewriteInternalLinks, stripHeadingAnchors } from "./links.js";
 import {
   buildOutput,
   writeOutput,
@@ -112,7 +112,7 @@ export async function runPipeline(
         log("info", `DRY ${item.key} -> ${outPath}`);
         continue;
       }
-      const md = rewriteInternalLinks(item.bytes.toString("utf8"));
+      const md = stripHeadingAnchors(rewriteInternalLinks(item.bytes.toString("utf8")));
       writeOutput(outPath, md);
       converted += 1;
       report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });

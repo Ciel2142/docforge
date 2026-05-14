@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { rewriteInternalLinks } from "../src/links.js";
+import { rewriteInternalLinks, stripHeadingAnchors } from "../src/links.js";
 
 describe("rewriteInternalLinks", () => {
   test("simple relative link rewritten", () => {
@@ -86,5 +86,46 @@ describe("rewriteInternalLinks", () => {
   test("protocol-relative autolink untouched", () => {
     const md = "<//cdn.example.com/page.html>";
     expect(rewriteInternalLinks(md)).toBe(md);
+  });
+});
+
+describe("stripHeadingAnchors", () => {
+  test("strips trailing anchor from heading line", () => {
+    expect(stripHeadingAnchors("LM Studio 0.4.1 [#lm-studio-041]")).toBe(
+      "LM Studio 0.4.1",
+    );
+  });
+
+  test("strips slug with leading and doubled hyphens", () => {
+    expect(
+      stripHeadingAnchors("LM Studio 0.3.15 • 2025-04-24 [#-lm-studio-0315--2025-04-24]"),
+    ).toBe("LM Studio 0.3.15 • 2025-04-24");
+  });
+
+  test("strips per line, leaves body text intact", () => {
+    const md = "Heading One [#heading-one]\nbody text\nHeading Two [#heading-two]";
+    expect(stripHeadingAnchors(md)).toBe("Heading One\nbody text\nHeading Two");
+  });
+
+  test("line without anchor untouched", () => {
+    expect(stripHeadingAnchors("just some text")).toBe("just some text");
+  });
+
+  test("anchor not at end of line untouched", () => {
+    const md = "see [#anchor] in the middle";
+    expect(stripHeadingAnchors(md)).toBe(md);
+  });
+
+  test("markdown link with fragment untouched", () => {
+    const md = "[Section](page.md#intro)";
+    expect(stripHeadingAnchors(md)).toBe(md);
+  });
+
+  test("trailing whitespace after anchor removed", () => {
+    expect(stripHeadingAnchors("Heading [#slug]  ")).toBe("Heading");
+  });
+
+  test("empty string returns empty", () => {
+    expect(stripHeadingAnchors("")).toBe("");
   });
 });
