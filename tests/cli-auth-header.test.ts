@@ -88,7 +88,7 @@ describe("convert --auth-header", () => {
     try {
       const out = join(tmp, "noauth");
       const code = await runConvert(srv.url, baseOpts(out));
-      expect(code).not.toBe(0);
+      expect(code).toBe(1);
       expect(existsSync(join(out, "index.md"))).toBe(false);
     } finally {
       await srv.close();
