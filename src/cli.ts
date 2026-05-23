@@ -42,6 +42,13 @@ export function buildProgram(): Command {
     .option("--user-agent <str>", "User-Agent header (URL source only)", DEFAULT_USER_AGENT)
     .option("--auth-header <value>", "Authorization header value sent to the root origin (URL source only). Warning: visible in process list and shell history.")
     .option("--selector <css>", "CSS selector override for body extraction (Defuddle contentSelector)")
+    .option("--describe-images", "describe images via a VLM (URL source only)", false)
+    .option("--vlm-base-url <url>", "OpenAI-compatible VLM base URL incl. /v1 (env DOCFORGE_VLM_BASE_URL)")
+    .option("--vlm-model <name>", "VLM model id (env DOCFORGE_VLM_MODEL)")
+    .option("--vlm-api-key <key>", "VLM API key (env DOCFORGE_VLM_API_KEY)")
+    .option("--vlm-min-dim <px>", "skip images smaller than N px on the long side", "64")
+    .option("--vlm-max-images <N>", "max images described per document", "50")
+    .option("--vlm-concurrency <N>", "parallel VLM calls", "2")
     .option("--llms-full <mode>", "llms-full.txt mode: auto|force|off (URL source only)", "auto")
     .action(async (source: string, opts: ConvertOpts) => {
       const code = await runConvert(source, opts);
@@ -68,6 +75,13 @@ interface ConvertOpts {
   selector?: string | undefined;
   llmsFull: string;
   authHeader?: string | undefined;
+  describeImages?: boolean | undefined;
+  vlmBaseUrl?: string | undefined;
+  vlmModel?: string | undefined;
+  vlmApiKey?: string | undefined;
+  vlmMinDim?: string | undefined;
+  vlmMaxImages?: string | undefined;
+  vlmConcurrency?: string | undefined;
 }
 
 function isUrl(s: string): boolean {
@@ -119,6 +133,38 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       userAgent: opts.userAgent,
       llmsFullMode,
     };
+    if (opts.describeImages) {
+      const baseUrl = opts.vlmBaseUrl ?? process.env.DOCFORGE_VLM_BASE_URL;
+      const model = opts.vlmModel ?? process.env.DOCFORGE_VLM_MODEL;
+      if (!baseUrl || !model) {
+        log(
+          "error",
+          "--describe-images requires --vlm-base-url and --vlm-model (or DOCFORGE_VLM_BASE_URL / DOCFORGE_VLM_MODEL)",
+        );
+        return 2;
+      }
+      const apiKey = opts.vlmApiKey ?? process.env.DOCFORGE_VLM_API_KEY;
+      const minDim = parseInt(opts.vlmMinDim ?? "64", 10);
+      const maxImages = parseInt(opts.vlmMaxImages ?? "50", 10);
+      const concurrency = parseInt(opts.vlmConcurrency ?? "2", 10);
+      if (Number.isNaN(minDim) || Number.isNaN(maxImages) || Number.isNaN(concurrency)) {
+        log("error", "--vlm-min-dim, --vlm-max-images, and --vlm-concurrency must be integers");
+        return 2;
+      }
+      pipelineOpts.vlm = {
+        baseUrl,
+        model,
+        minDim,
+        maxImages,
+        concurrency,
+        timeoutMs: 60_000,
+        ...(apiKey ? { apiKey } : {}),
+      };
+    }
+  }
+
+  if (opts.describeImages && !isUrl(sourceArg)) {
+    log("warn", "--describe-images ignored for non-URL sources (v1 supports URL sources only)");
   }
 
   let result;
@@ -138,6 +184,13 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
     "info",
     `converted=${result.converted} empty=${result.empty} skipped=${result.skipped} failed=${result.failed} total=${total}`,
   );
+
+  if (result.vlm) {
+    log(
+      "info",
+      `vlm: described=${result.vlm.described} skipped=${result.vlm.skipped} failed=${result.vlm.failed} cached=${result.vlm.cached}`,
+    );
+  }
 
   if (total > 0 && result.failed / total > failThreshold) {
     log(
