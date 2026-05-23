@@ -56,6 +56,49 @@ Markdown, mdBook, and bare HTML5 pages out of the box.
 Override per run with `--selector <css>` when the picker chooses the wrong
 element on a specific site.
 
+### Image description (VLM)
+
+Documentation images — diagrams, screenshots, figures — are normally lost in the
+HTML→Markdown conversion (only weak alt-text survives). With `--describe-images`,
+docforge sends each informative raster image to a local OpenAI-compatible VLM
+(e.g. LM Studio serving Qwen2.5-VL) and injects a caption block after the image:
+
+```` markdown
+![Architecture overview](arch.png)
+
+> **Figure — Architecture overview.** A load balancer routes traffic to three
+> API nodes, each reading from a shared Postgres primary with one read replica.
+````
+
+This is an opt-in, **URL-source-only** pass. It runs outside the deterministic
+conversion core: with the flag off, output is byte-identical to before. Image
+fetches reuse the crawl's cache and auth; descriptions are cached by image hash
+so repeated logos/diagrams are described once. A model outage skips the image
+and warns — the document still converts.
+
+```bash
+docforge convert https://docs.example.com/ --output ./md \
+  --describe-images \
+  --vlm-base-url http://192.168.1.114:1234/v1 \
+  --vlm-model qwen2.5-vl-7b-instruct \
+  --vlm-api-key "$LMSTUDIO_TOKEN"
+```
+
+Flags: `--describe-images`, `--vlm-base-url` (env `DOCFORGE_VLM_BASE_URL`),
+`--vlm-model` (env `DOCFORGE_VLM_MODEL`), `--vlm-api-key`
+(env `DOCFORGE_VLM_API_KEY`), `--vlm-min-dim` (default 64),
+`--vlm-max-images` (default 50), `--vlm-concurrency` (default 2). SVG and
+local-file sources are not yet supported.
+
+**Prerequisite:** a vision-capable model must be loaded in the endpoint; an
+embedding-only model cannot describe images. Output is not byte-reproducible
+with this flag on (VLMs are not deterministic); the cache makes it stable within
+a cache lifetime.
+
+For the MCP `convert` tool, the VLM endpoint/model/key are read from the server
+environment (`DOCFORGE_VLM_*`); the tool exposes only `describe_images`,
+`vlm_min_dim`, and `vlm_max_images` so the key never enters the transcript.
+
 ### llms-full.txt shortcut
 
 When a site publishes an [llms-full.txt](https://llmstxt.org/) at its root,
