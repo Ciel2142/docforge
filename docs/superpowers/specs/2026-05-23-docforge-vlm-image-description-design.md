@@ -243,10 +243,14 @@ required when it is set. CLI `convert` flags:
 | `--vlm-max-images <n>` | — | 50 |
 
 If `--describe-images` is set but base-url/model are missing, fail fast with a
-clear error (do not silently no-op). MCP `convert` tool gains a matching
-`describe_images` boolean plus `vlm_base_url` / `vlm_model` / `vlm_api_key` /
-`vlm_min_dim` / `vlm_max_images` args. Off by default. The two OpenAPI entry
-points are untouched (specs have no images).
+clear error (do not silently no-op). For the MCP `convert` tool the VLM
+endpoint, model, and key come from the **server environment**
+(`DOCFORGE_VLM_BASE_URL` / `DOCFORGE_VLM_MODEL` / `DOCFORGE_VLM_API_KEY`), not
+from tool arguments, so the API key never enters the tool-call transcript. The
+tool exposes only a `describe_images` boolean plus `vlm_min_dim` /
+`vlm_max_images` overrides; `describe_images=true` with no server VLM configured
+returns `INVALID_ARGS`. Off by default. The two OpenAPI entry points are
+untouched (specs have no images).
 
 ### 10. Reporting
 
