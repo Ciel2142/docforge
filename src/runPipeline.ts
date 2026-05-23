@@ -15,6 +15,8 @@ import { runOpenapiPipeline } from "./openapi/pipeline.js";
 import { FilesystemSource, HttpSource, type Source, type SourceItem } from "./source.js";
 import type { FetchOptions } from "./http/fetch.js";
 import type { CrawlOptions } from "./http/crawl.js";
+import { runVlmPass } from "./vlm/index.js";
+import type { VlmOptions, DescribeStats } from "./vlm/types.js";
 
 export interface RunPipelineOptions {
   source: string;
@@ -24,6 +26,7 @@ export interface RunPipelineOptions {
   fetchOptions?: FetchOptions;
   crawlOptions?: CrawlOptions;
   selector?: string;
+  vlm?: VlmOptions;
 }
 
 export interface PipelineResult {
@@ -32,6 +35,7 @@ export interface PipelineResult {
   skipped: number;
   failed: number;
   report: ReportEntry[];
+  vlm?: DescribeStats;
 }
 
 function isUrl(s: string): boolean {
@@ -85,6 +89,7 @@ export async function runPipeline(
   let empty = 0;
   let failed = 0;
   const report: ReportEntry[] = [];
+  const vlmStats: DescribeStats = { described: 0, skipped: 0, failed: 0, cached: 0 };
   const outputsUsed = new Map<string, string>();
 
   for await (const item of source.iter()) {
@@ -189,12 +194,36 @@ export async function runPipeline(
 
     const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
-    const bodyMd = rewriteInternalLinks(result.body_md);
+    let bodyMd = rewriteInternalLinks(result.body_md);
+    if (
+      opts.vlm &&
+      opts.fetchOptions &&
+      (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://"))
+    ) {
+      try {
+        const vlmResult = await runVlmPass(bodyMd, item.srcUri, opts.vlm, opts.fetchOptions);
+        bodyMd = vlmResult.md;
+        vlmStats.described += vlmResult.stats.described;
+        vlmStats.skipped += vlmResult.stats.skipped;
+        vlmStats.failed += vlmResult.stats.failed;
+        vlmStats.cached += vlmResult.stats.cached;
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        log("warn", `vlm pass failed for ${item.key}: ${err}`);
+      }
+    }
     const content = buildOutput(title, item.key, bodyMd);
     writeOutput(outPath, content);
     converted += 1;
     report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
   }
 
-  return { converted, empty, skipped: source.skippedCount, failed, report };
+  return {
+    converted,
+    empty,
+    skipped: source.skippedCount,
+    failed,
+    report,
+    ...(opts.vlm ? { vlm: vlmStats } : {}),
+  };
 }
