@@ -1,6 +1,7 @@
 export type ErrorCode =
   | "INVALID_URL"
   | "INVALID_CORPUS_NAME"
+  | "INVALID_ARGS"
   | "ROBOTS_BLOCKED"
   | "SOURCE_MISMATCH"
   | "LLMS_FULL_MISSING"

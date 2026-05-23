@@ -33,6 +33,9 @@ interface ConvertArgs {
   preview_bytes?: number;
   exclude_hosts?: string[];
   auth_header?: string;
+  describe_images?: boolean;
+  vlm_min_dim?: number;
+  vlm_max_images?: number;
 }
 
 function parseArgs(raw: Record<string, unknown>): ConvertArgs {
@@ -63,6 +66,9 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
   if (typeof raw.concurrency === "number") args.concurrency = raw.concurrency;
   if (typeof raw.user_agent === "string") args.user_agent = raw.user_agent;
   if (typeof raw.auth_header === "string" && raw.auth_header) args.auth_header = raw.auth_header;
+  if (raw.describe_images === true) args.describe_images = true;
+  if (typeof raw.vlm_min_dim === "number") args.vlm_min_dim = raw.vlm_min_dim;
+  if (typeof raw.vlm_max_images === "number") args.vlm_max_images = raw.vlm_max_images;
   if (typeof raw.force_refresh === "boolean") args.force_refresh = raw.force_refresh;
   if (typeof raw.preview_bytes === "number") args.preview_bytes = raw.preview_bytes;
   if (Array.isArray(raw.exclude_hosts)) {
@@ -194,6 +200,13 @@ export const convertTool: ToolDefinition = {
         items: { type: "string" },
         description: "skip URLs whose host matches any entry (exact or .suffix match). e.g. ['linkedin.com','discord.gg']",
       },
+      describe_images: {
+        type: "boolean",
+        default: false,
+        description: "describe images via the server-configured VLM (requires DOCFORGE_VLM_BASE_URL + DOCFORGE_VLM_MODEL env)",
+      },
+      vlm_min_dim: { type: "integer", minimum: 1, description: "skip images smaller than N px on the long side (default 64; only used when describe_images=true)" },
+      vlm_max_images: { type: "integer", minimum: 1, description: "max images described per document (default 50; only used when describe_images=true)" },
     },
     required: ["url"],
     additionalProperties: false,
@@ -262,6 +275,24 @@ export const convertTool: ToolDefinition = {
         },
       };
       if (args.selector !== undefined) pipelineOpts.selector = args.selector;
+      if (args.describe_images) {
+        if (!ctx.config.vlm) {
+          throw new McpError(
+            "INVALID_ARGS",
+            "describe_images=true but the server has no VLM configured",
+            "set DOCFORGE_VLM_BASE_URL and DOCFORGE_VLM_MODEL in the MCP server environment",
+          );
+        }
+        pipelineOpts.vlm = {
+          baseUrl: ctx.config.vlm.baseUrl,
+          model: ctx.config.vlm.model,
+          minDim: args.vlm_min_dim ?? 64,
+          maxImages: args.vlm_max_images ?? 50,
+          concurrency: 2,
+          timeoutMs: 60_000,
+          ...(ctx.config.vlm.apiKey ? { apiKey: ctx.config.vlm.apiKey } : {}),
+        };
+      }
 
       let result;
       try {

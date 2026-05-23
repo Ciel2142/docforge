@@ -11,6 +11,7 @@ export interface McpConfig {
   maxPages: number;
   maxDepth: number;
   concurrency: number;
+  vlm?: { baseUrl: string; model: string; apiKey?: string };
 }
 
 function expandHome(p: string): string {
@@ -47,6 +48,17 @@ export function loadConfig(): McpConfig {
   const cacheDir = resolve(expandHome(process.env.DOCFORGE_CACHE_DIR ?? "~/.cache/docforge"));
   const userAgent = process.env.DOCFORGE_USER_AGENT ?? `docforge/${VERSION}`;
 
+  const vlmBaseUrl = process.env.DOCFORGE_VLM_BASE_URL;
+  const vlmModel = process.env.DOCFORGE_VLM_MODEL;
+  const vlm =
+    vlmBaseUrl && vlmModel
+      ? {
+          baseUrl: vlmBaseUrl,
+          model: vlmModel,
+          ...(process.env.DOCFORGE_VLM_API_KEY ? { apiKey: process.env.DOCFORGE_VLM_API_KEY } : {}),
+        }
+      : undefined;
+
   return {
     qmdRoot,
     cacheDir,
@@ -54,5 +66,6 @@ export function loadConfig(): McpConfig {
     maxPages: parseIntEnv("DOCFORGE_MAX_PAGES", 5000),
     maxDepth: parseIntEnv("DOCFORGE_MAX_DEPTH", 10),
     concurrency: parseIntEnv("DOCFORGE_CONCURRENCY", 4),
+    ...(vlm ? { vlm } : {}),
   };
 }
