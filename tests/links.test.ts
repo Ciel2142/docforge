@@ -192,4 +192,25 @@ describe("delocalizeLinks", () => {
       ),
     ).toBe("[x](a b/c.html)");
   });
+
+  test("delocalizes two adjacent sentinel links on one line", () => {
+    expect(
+      delocalizeLinks(
+        "[a](http://docforge.invalid/api/a.html) and [b](http://docforge.invalid/api/b.html#x)",
+        "guide/p.md",
+      ),
+    ).toBe("[a](../api/a.html) and [b](../api/b.html#x)");
+  });
+
+  test("preserves query string", () => {
+    expect(
+      delocalizeLinks("[x](http://docforge.invalid/api/ref.html?v=3#s)", "index.md"),
+    ).toBe("[x](api/ref.html?v=3#s)");
+  });
+
+  test("root self-link to site root → current dir", () => {
+    expect(
+      delocalizeLinks("[home](http://docforge.invalid/)", "index.md"),
+    ).toBe("[home](.)");
+  });
 });

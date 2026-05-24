@@ -23,6 +23,10 @@ export function stripHeadingAnchors(md: string): string {
 // `.invalid` is reserved (RFC 2606) and can never be a real link target.
 export const LOCAL_BASE = "http://docforge.invalid/";
 
+// These share the `[^)\s]` link-body limitation with rewriteInternalLinks above:
+// a URL path containing a literal `)` (e.g. `.../foo_(bar)/x.html`) is not handled.
+// Defuddle/Kreuzberg rarely emit such paths for doc corpora; if support is needed,
+// fix all link regexes in this file together (tracked separately, not here).
 const SENTINEL_LINK_RE = /\]\((http:\/\/docforge\.invalid\/[^)\s]*)\)/g;
 const SENTINEL_AUTOLINK_RE = /<(http:\/\/docforge\.invalid\/[^>\s]*)>/g;
 
@@ -37,9 +41,10 @@ export function delocalizeLinks(md: string, fromRelpath: string): string {
   const toRel = (abs: string): string => {
     const u = new URL(abs);
     const targetPath = decodeURI(u.pathname).replace(/^\//, "");
+    if (!targetPath) return u.hash || "."; // bare site-root target (e.g. a "home" link)
     let rel = posix.relative(fromDir, targetPath);
     if (rel === "") rel = posix.basename(targetPath);
-    return rel + u.hash;
+    return rel + u.search + u.hash;
   };
   return md
     .replace(SENTINEL_LINK_RE, (_m, abs: string) => `](${toRel(abs)})`)
