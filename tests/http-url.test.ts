@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { normalizeUrl, sameOrigin, urlToOutputPath } from "../src/http/url.js";
+import {
+  normalizeUrl,
+  relativizeSameOriginLinks,
+  sameOrigin,
+  urlToOutputPath,
+} from "../src/http/url.js";
 
 describe("normalizeUrl", () => {
   test("absolute http url passes through", () => {
@@ -104,5 +109,69 @@ describe("urlToOutputPath", () => {
     expect(urlToOutputPath("https://x.com/820@/Item820.html", "/out")).toBe(
       urlToOutputPath("https://x.com/820%40/Item820.html", "/out"),
     );
+  });
+});
+
+describe("relativizeSameOriginLinks", () => {
+  const PAGE = "https://docs.example.com/guide/intro";
+
+  test("same-origin extensionless link → relative .md, fragment preserved", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "See [the API](https://docs.example.com/api/reference#post-widgets).",
+        PAGE,
+      ),
+    ).toBe("See [the API](../api/reference.md#post-widgets).");
+  });
+
+  test("same-origin sibling link → relative .md", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "[next](https://docs.example.com/guide/advanced)",
+        PAGE,
+      ),
+    ).toBe("[next](advanced.md)");
+  });
+
+  test("same-origin .html link → relative .md", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "[ref](https://docs.example.com/api/reference.html)",
+        PAGE,
+      ),
+    ).toBe("[ref](../api/reference.md)");
+  });
+
+  test("trailing-slash same-origin link → index.md", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "[api home](https://docs.example.com/api/)",
+        PAGE,
+      ),
+    ).toBe("[api home](../api/index.md)");
+  });
+
+  test("autolink same-origin → relative .md", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "<https://docs.example.com/api/reference>",
+        PAGE,
+      ),
+    ).toBe("<../api/reference.md>");
+  });
+
+  test("external link left untouched", () => {
+    const md = "[ext](https://other.com/x) and [rel](../already/rel.md)";
+    expect(relativizeSameOriginLinks(md, PAGE)).toBe(md);
+  });
+
+  test("same-origin image left absolute (asset not converted)", () => {
+    const md = "![diagram](https://docs.example.com/img/arch.png)";
+    expect(relativizeSameOriginLinks(md, PAGE)).toBe(md);
+  });
+
+  test("same-origin non-page asset link left absolute", () => {
+    const md = "[spec](https://docs.example.com/files/spec.pdf)";
+    expect(relativizeSameOriginLinks(md, PAGE)).toBe(md);
   });
 });

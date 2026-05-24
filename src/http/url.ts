@@ -60,3 +60,50 @@ export function urlToOutputPath(url: string, outputDir: string): string {
 function sanitizeSegment(seg: string): string {
   return seg.replace(/[<>:"|?*\0]/g, "_");
 }
+
+// A same-origin link is a "page" (will have a converted .md) if its path is a
+// directory (ends with "/"), an HTML file, or extensionless (e.g. /guide/intro).
+// Asset links (.png, .pdf, .css, ...) are NOT converted, so leave them absolute.
+function isLikelyPageUrl(pathname: string): boolean {
+  if (pathname === "" || pathname.endsWith("/")) return true;
+  if (/\.html?$/i.test(pathname)) return true;
+  const last = pathname.split("/").pop() ?? "";
+  return !last.includes(".");
+}
+
+// Markdown inline link [text](url) — NOT an image (negative lookbehind on `!`).
+const ABS_LINK_RE = /(?<!!)\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+const ABS_AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g;
+
+/**
+ * Rewrite SAME-ORIGIN page links in `md` from absolute URLs to paths relative
+ * to `pageUrl`'s converted output (.md), preserving the `#fragment`. External
+ * links, same-origin non-page assets, and images are left untouched. Mirrors
+ * delocalizeLinks but for real-origin (URL-crawl) sources.
+ */
+export function relativizeSameOriginLinks(md: string, pageUrl: string): string {
+  const pageRel = urlToOutputPath(pageUrl, ""); // bare posix relpath, e.g. "guide/intro.md"
+  const fromDir = posix.dirname(pageRel);
+  const toRel = (absUrl: string): string | null => {
+    if (!sameOrigin(absUrl, pageUrl)) return null;
+    let u: URL;
+    try {
+      u = new URL(absUrl);
+    } catch {
+      return null;
+    }
+    if (!isLikelyPageUrl(u.pathname)) return null;
+    const targetRel = urlToOutputPath(absUrl, "");
+    const rel = posix.relative(fromDir, targetRel) || posix.basename(targetRel);
+    return rel + u.hash;
+  };
+  return md
+    .replace(ABS_LINK_RE, (m, text: string, url: string) => {
+      const r = toRel(url);
+      return r === null ? m : `[${text}](${r})`;
+    })
+    .replace(ABS_AUTOLINK_RE, (m, url: string) => {
+      const r = toRel(url);
+      return r === null ? m : `<${r}>`;
+    });
+}
