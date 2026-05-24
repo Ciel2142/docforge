@@ -54,7 +54,8 @@ works for Sphinx, Material for MkDocs, Docusaurus, VitePress, GitHub-flavoured
 Markdown, mdBook, and bare HTML5 pages out of the box.
 
 Override per run with `--selector <css>` when the picker chooses the wrong
-element on a specific site.
+element on a specific site. Use `--format <default|obsidian>` to switch the
+output shape (see [Output formats](#output-formats) below).
 
 ### Image description (VLM)
 
@@ -112,6 +113,25 @@ Enabled by default for URL sources; control with `--llms-full <mode>`:
 
 The output filename is `llms-full.md` (the body is written verbatim after
 internal-link rewriting; no Defuddle, no Kreuzberg).
+
+### Output formats
+
+`--format default` (the default) emits RAG-friendly Markdown: a `# Title` line, a
+`Source:` provenance line, and relative `.md` links — tuned for embedding/qmd.
+
+`--format obsidian` emits Obsidian-vault Markdown instead:
+
+- Provenance moves into YAML frontmatter (`title`, `source`).
+- Internal links become vault-relative `[[wikilinks]]` (slug anchors are dropped,
+  since Obsidian heading links need literal heading text).
+- Images and external links are left as standard Markdown.
+
+```bash
+docforge convert ~/docs/some-corpus --output ~/vault/some-corpus --format obsidian
+```
+
+OpenAPI output, callouts, image embeds, and embedding-based related-notes are not
+covered by `--format obsidian` (see the design spec).
 
 ## Development
 
