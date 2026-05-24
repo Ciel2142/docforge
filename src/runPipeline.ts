@@ -212,8 +212,7 @@ export async function runPipeline(
     const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
     const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
-    const isUrlSource =
-      item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://");
+    const isUrlSource = isUrl(item.srcUri);
     const normalizedLinks = isUrlSource
       ? relativizeSameOriginLinks(result.body_md, item.srcUri)
       : delocalizeLinks(result.body_md, fromRel);
