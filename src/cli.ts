@@ -42,6 +42,7 @@ export function buildProgram(): Command {
     .option("--user-agent <str>", "User-Agent header (URL source only)", DEFAULT_USER_AGENT)
     .option("--auth-header <value>", "Authorization header value sent to the root origin (URL source only). Warning: visible in process list and shell history.")
     .option("--selector <css>", "CSS selector override for body extraction (Defuddle contentSelector)")
+    .option("--format <fmt>", "output format: default|obsidian", "default")
     .option("--describe-images", "describe images via a VLM (URL source only)", false)
     .option("--vlm-base-url <url>", "OpenAI-compatible VLM base URL incl. /v1 (env DOCFORGE_VLM_BASE_URL)")
     .option("--vlm-model <name>", "VLM model id (env DOCFORGE_VLM_MODEL)")
@@ -82,6 +83,7 @@ interface ConvertOpts {
   vlmMinDim?: string | undefined;
   vlmMaxImages?: string | undefined;
   vlmConcurrency?: string | undefined;
+  format?: string | undefined;
 }
 
 function isUrl(s: string): boolean {
@@ -100,6 +102,12 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
   const maxBytes = parseInt(opts.maxBytes, 10);
   const failThreshold = parseFloat(opts.failThreshold);
 
+  const format = opts.format ?? "default";
+  if (format !== "default" && format !== "obsidian") {
+    log("error", `invalid --format value: ${opts.format} (expected default|obsidian)`);
+    return 2;
+  }
+
   const pipelineOpts: RunPipelineOptions = {
     source: isUrl(sourceArg) ? sourceArg : resolve(expandHome(sourceArg)),
     outputDir: output,
@@ -107,6 +115,7 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
     dryRun: opts.dryRun,
   };
   if (opts.selector !== undefined) pipelineOpts.selector = opts.selector;
+  pipelineOpts.format = format as "default" | "obsidian";
 
   if (isUrl(sourceArg)) {
     const llmsFullMode = opts.llmsFull as "auto" | "force" | "off";
