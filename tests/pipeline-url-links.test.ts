@@ -13,12 +13,15 @@ function page(body: string): string {
 }
 
 let tmp: string;
-let stub: StubServer;
+let stub: StubServer | undefined;
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), "df-urllinks-"));
 });
 afterEach(async () => {
-  if (stub) await stub.close();
+  if (stub) {
+    await stub.close();
+    stub = undefined;
+  }
   rmSync(tmp, { recursive: true, force: true });
 });
 
