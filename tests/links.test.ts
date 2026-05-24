@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { rewriteInternalLinks, stripHeadingAnchors } from "../src/links.js";
+import { delocalizeLinks, LOCAL_BASE } from "../src/links.js";
 
 describe("rewriteInternalLinks", () => {
   test("simple relative link rewritten", () => {
@@ -127,5 +128,68 @@ describe("stripHeadingAnchors", () => {
 
   test("empty string returns empty", () => {
     expect(stripHeadingAnchors("")).toBe("");
+  });
+});
+
+describe("delocalizeLinks", () => {
+  test("LOCAL_BASE is the docforge.invalid sentinel", () => {
+    expect(LOCAL_BASE).toBe("http://docforge.invalid/");
+  });
+
+  test("cross-dir anchored link → file-relative, fragment preserved", () => {
+    expect(
+      delocalizeLinks(
+        "[API reference](http://docforge.invalid/api/ref.html#sec)",
+        "guide/intro.md",
+      ),
+    ).toBe("[API reference](../api/ref.html#sec)");
+  });
+
+  test("same-dir link → bare relative", () => {
+    expect(
+      delocalizeLinks(
+        "[sib](http://docforge.invalid/guide/sib.html#x)",
+        "guide/intro.md",
+      ),
+    ).toBe("[sib](sib.html#x)");
+  });
+
+  test("root-level source file → relative without ../", () => {
+    expect(
+      delocalizeLinks(
+        "[api](http://docforge.invalid/api/ref.html)",
+        "index.md",
+      ),
+    ).toBe("[api](api/ref.html)");
+  });
+
+  test("autolink form is delocalized", () => {
+    expect(
+      delocalizeLinks("see <http://docforge.invalid/api/ref.html>", "guide/p.md"),
+    ).toBe("see <../api/ref.html>");
+  });
+
+  test("image links are delocalized too", () => {
+    expect(
+      delocalizeLinks(
+        "![diagram](http://docforge.invalid/img/arch.png)",
+        "guide/p.md",
+      ),
+    ).toBe("![diagram](../img/arch.png)");
+  });
+
+  test("leaves real http(s) and relative links untouched", () => {
+    const md =
+      "[ext](https://example.com/page.html) [rel](../already/rel.html) [mail](mailto:a@b.com)";
+    expect(delocalizeLinks(md, "guide/p.md")).toBe(md);
+  });
+
+  test("decodes percent-encoded path segments", () => {
+    expect(
+      delocalizeLinks(
+        "[x](http://docforge.invalid/a%20b/c.html)",
+        "index.md",
+      ),
+    ).toBe("[x](a b/c.html)");
   });
 });
