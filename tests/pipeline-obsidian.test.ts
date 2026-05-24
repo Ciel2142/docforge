@@ -96,5 +96,9 @@ describe("runPipeline local cross-dir internal links (docf-7w5)", () => {
     const intro = readFileSync(join(outDir, "guide", "intro.md"), "utf8");
     expect(intro).not.toContain("about:blank");
     expect(intro).toContain("[API reference](../api/reference.md#post-widgets)");
+    // reverse direction (api/ → guide/) resolves symmetrically
+    const ref = readFileSync(join(outDir, "api", "reference.md"), "utf8");
+    expect(ref).not.toContain("about:blank");
+    expect(ref).toContain("[intro](../guide/intro.md)");
   });
 });
