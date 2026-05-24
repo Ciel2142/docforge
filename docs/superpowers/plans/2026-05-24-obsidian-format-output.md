@@ -385,8 +385,8 @@ with:
       if (format === "obsidian") {
         const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
         const stem = basename(item.key, extname(item.key)) || "index";
-        const source = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
-        md = buildObsidianOutput(stem, source, stripHeadingAnchors(toObsidianWikilinks(raw, fromRel)));
+        const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+        md = buildObsidianOutput(stem, provenance, stripHeadingAnchors(toObsidianWikilinks(raw, fromRel)));
       } else {
         md = stripHeadingAnchors(rewriteInternalLinks(raw));
       }
@@ -429,10 +429,10 @@ Then replace the output-build line (currently):
 with:
 
 ```ts
-    const source = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+    const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
     const content =
       format === "obsidian"
-        ? buildObsidianOutput(title, source, bodyMd)
+        ? buildObsidianOutput(title, provenance, bodyMd)
         : buildOutput(title, item.key, bodyMd);
     writeOutput(outPath, content);
 ```
@@ -736,4 +736,6 @@ bd close docf-jee --reason="--format obsidian shipped: frontmatter + wikilinks, 
 - **ESM imports:** this project uses NodeNext module resolution — import local modules with the `.js` extension (e.g. `../src/obsidian.js`) even though the source is `.ts`. Follow the existing pattern in neighbouring files.
 - **Lookbehind:** `MD_LINK_RE` uses `(?<!!)` to avoid matching image syntax `![alt](...)`. Node 20+ supports lookbehind; vitest runs under Node, so this is safe.
 - **Why `posix` path APIs:** vault paths must use `/` separators on every OS. `relative(...).split(sep).join("/")` normalises the doc's own path; `posix.join`/`posix.dirname` keep target resolution POSIX.
+- **Frontmatter `source` value — intentional divergence from the spec:** the spec §1 says "Use `item.srcUri`", but for filesystem items `srcUri` is a `file://` absolute URL (`src/source.ts:117` — `pathToFileURL(path)`), which would emit `source: "file:///tmp/.../page.html"`. So the plan uses `/^https?:\/\//.test(item.srcUri) ? item.srcUri : item.key` — full URL for URL sources, clean source-relative path (`item.key`) for filesystem sources. This matches the spec's *described intent* ("source-relative path for filesystem sources") and the Task 3 test's `source: "page.html"` assertion. Do **not** "fix" it back to bare `item.srcUri`.
+- **Don't reuse the name `source`:** `runPipeline` already binds `let source: Source` (the input Source object) near the top. The obsidian provenance local is named `provenance` to avoid shadowing it — keep that name.
 - **Backward compatibility is load-bearing:** never change the `format === "default"` branches. The Task 3 default-mode test and the existing `tests/output.test.ts` goldens guard this.
