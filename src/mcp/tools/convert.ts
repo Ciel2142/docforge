@@ -36,6 +36,7 @@ interface ConvertArgs {
   describe_images?: boolean;
   vlm_min_dim?: number;
   vlm_max_images?: number;
+  format?: "default" | "obsidian";
 }
 
 function parseArgs(raw: Record<string, unknown>): ConvertArgs {
@@ -78,6 +79,7 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
     }
     if (hosts.length > 0) args.exclude_hosts = hosts;
   }
+  if (raw.format === "default" || raw.format === "obsidian") args.format = raw.format;
   return args;
 }
 
@@ -185,6 +187,12 @@ export const convertTool: ToolDefinition = {
       llms_full: { type: "string", enum: ["auto", "force", "off"], default: "auto" },
       llms_index: { type: "string", enum: ["auto", "force", "off"], default: "auto" },
       selector: { type: "string", description: "CSS selector override for body extraction" },
+      format: {
+        type: "string",
+        enum: ["default", "obsidian"],
+        default: "default",
+        description: "output format: default (RAG inline-provenance) or obsidian (YAML frontmatter + [[wikilinks]])",
+      },
       max_pages: { type: "integer", minimum: 1 },
       max_depth: { type: "integer", minimum: 1 },
       concurrency: { type: "integer", minimum: 1 },
@@ -275,6 +283,7 @@ export const convertTool: ToolDefinition = {
         },
       };
       if (args.selector !== undefined) pipelineOpts.selector = args.selector;
+      if (args.format !== undefined) pipelineOpts.format = args.format;
       if (args.describe_images) {
         if (!ctx.config.vlm) {
           throw new McpError(
