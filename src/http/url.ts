@@ -65,7 +65,7 @@ function sanitizeSegment(seg: string): string {
 // directory (ends with "/"), an HTML file, or extensionless (e.g. /guide/intro).
 // Asset links (.png, .pdf, .css, ...) are NOT converted, so leave them absolute.
 function isLikelyPageUrl(pathname: string): boolean {
-  if (pathname === "" || pathname.endsWith("/")) return true;
+  if (pathname.endsWith("/")) return true;
   if (/\.html?$/i.test(pathname)) return true;
   const last = pathname.split("/").pop() ?? "";
   return !last.includes(".");
@@ -86,12 +86,8 @@ export function relativizeSameOriginLinks(md: string, pageUrl: string): string {
   const fromDir = posix.dirname(pageRel);
   const toRel = (absUrl: string): string | null => {
     if (!sameOrigin(absUrl, pageUrl)) return null;
-    let u: URL;
-    try {
-      u = new URL(absUrl);
-    } catch {
-      return null;
-    }
+    // sameOrigin already parsed absUrl via normalizeUrl, so this cannot throw.
+    const u = new URL(absUrl);
     if (!isLikelyPageUrl(u.pathname)) return null;
     const targetRel = urlToOutputPath(absUrl, "");
     const rel = posix.relative(fromDir, targetRel) || posix.basename(targetRel);

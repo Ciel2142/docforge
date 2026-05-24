@@ -174,4 +174,13 @@ describe("relativizeSameOriginLinks", () => {
     const md = "[spec](https://docs.example.com/files/spec.pdf)";
     expect(relativizeSameOriginLinks(md, PAGE)).toBe(md);
   });
+
+  test("query string dropped, fragment preserved", () => {
+    expect(
+      relativizeSameOriginLinks(
+        "[v2](https://docs.example.com/api/reference?v=2#post-widgets)",
+        PAGE,
+      ),
+    ).toBe("[v2](../api/reference.md#post-widgets)");
+  });
 });
