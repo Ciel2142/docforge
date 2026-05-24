@@ -23,6 +23,12 @@ describe("buildObsidianOutput", () => {
       '---\ntitle: "T"\nsource: "p.html"\n---\n\nBody.\n',
     );
   });
+
+  test("escapes newlines in title to keep frontmatter single-line", () => {
+    expect(buildObsidianOutput("a\nb", "p.html", "Body.")).toBe(
+      '---\ntitle: "a\\nb"\nsource: "p.html"\n---\n\nBody.\n',
+    );
+  });
 });
 
 describe("toObsidianWikilinks", () => {
@@ -71,5 +77,17 @@ describe("toObsidianWikilinks", () => {
     expect(toObsidianWikilinks("[up](../../x.md)", "page.md")).toBe(
       "[up](../../x.md)",
     );
+  });
+
+  test("leaves root-absolute targets untouched", () => {
+    expect(
+      toObsidianWikilinks("[Guide](/reference/api.md)", "docs/page.md"),
+    ).toBe("[Guide](/reference/api.md)");
+  });
+
+  test("omits alias when link text equals the full vault path", () => {
+    expect(
+      toObsidianWikilinks("[setup/index](../setup/index.md)", "guide/page.md"),
+    ).toBe("[[setup/index]]");
   });
 });

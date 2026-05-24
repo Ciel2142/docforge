@@ -1,7 +1,11 @@
 import { posix } from "node:path";
 
 function yamlQuote(s: string): string {
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return `"${s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")}"`;
 }
 
 /** Render an Obsidian-vault note: YAML frontmatter (title, source) + body. */
@@ -30,6 +34,9 @@ const AUTOLINK_RE =
 export function toObsidianWikilinks(md: string, fromRelpath: string): string {
   const fromDir = posix.dirname(fromRelpath);
   const resolveVault = (raw: string): string | null => {
+    // Root-absolute targets (/foo) can't be mapped to a vault path without
+    // assuming vault root == site root; leave them untouched, like external links.
+    if (raw.startsWith("/")) return null;
     const vault = posix.join(fromDir, raw);
     // Targets above the vault root cannot be represented as a wikilink path.
     if (vault === ".." || vault.startsWith("../")) return null;
@@ -40,6 +47,8 @@ export function toObsidianWikilinks(md: string, fromRelpath: string): string {
       const vault = resolveVault(rawPath);
       if (vault === null) return match;
       const base = vault.split("/").pop() ?? vault;
+      // No alias when the text adds nothing: equal to the basename, or to the
+      // full vault path (Obsidian renders [[x|x]] identically to [[x]]).
       const alias = text && text !== base && text !== vault ? `|${text}` : "";
       return `[[${vault}${alias}]]`;
     })
