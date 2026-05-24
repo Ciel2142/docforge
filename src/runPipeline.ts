@@ -1,9 +1,10 @@
 import { existsSync, lstatSync, mkdirSync } from "node:fs";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, relative, resolve, sep } from "node:path";
 
 import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
 import { rewriteInternalLinks, stripHeadingAnchors } from "./links.js";
+import { buildObsidianOutput, toObsidianWikilinks } from "./obsidian.js";
 import {
   buildOutput,
   writeOutput,
@@ -27,6 +28,7 @@ export interface RunPipelineOptions {
   crawlOptions?: CrawlOptions;
   selector?: string;
   vlm?: VlmOptions;
+  format?: "default" | "obsidian";
 }
 
 export interface PipelineResult {
@@ -61,6 +63,7 @@ export async function runPipeline(
   signal?: AbortSignal,
 ): Promise<PipelineResult> {
   mkdirSync(opts.outputDir, { recursive: true });
+  const format = opts.format ?? "default";
 
   let source: Source;
   if (isUrl(opts.source)) {
@@ -117,7 +120,16 @@ export async function runPipeline(
         log("info", `DRY ${item.key} -> ${outPath}`);
         continue;
       }
-      const md = stripHeadingAnchors(rewriteInternalLinks(item.bytes.toString("utf8")));
+      const raw = item.bytes.toString("utf8");
+      let md: string;
+      if (format === "obsidian") {
+        const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
+        const stem = basename(item.key, extname(item.key)) || "index";
+        const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+        md = buildObsidianOutput(stem, provenance, stripHeadingAnchors(toObsidianWikilinks(raw, fromRel)));
+      } else {
+        md = stripHeadingAnchors(rewriteInternalLinks(raw));
+      }
       writeOutput(outPath, md);
       converted += 1;
       report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
@@ -194,7 +206,11 @@ export async function runPipeline(
 
     const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
-    let bodyMd = rewriteInternalLinks(result.body_md);
+    const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
+    let bodyMd =
+      format === "obsidian"
+        ? toObsidianWikilinks(result.body_md, fromRel)
+        : rewriteInternalLinks(result.body_md);
     if (
       opts.vlm &&
       opts.fetchOptions &&
@@ -212,7 +228,11 @@ export async function runPipeline(
         log("warn", `vlm pass failed for ${item.key}: ${err}`);
       }
     }
-    const content = buildOutput(title, item.key, bodyMd);
+    const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+    const content =
+      format === "obsidian"
+        ? buildObsidianOutput(title, provenance, bodyMd)
+        : buildOutput(title, item.key, bodyMd);
     writeOutput(outPath, content);
     converted += 1;
     report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
