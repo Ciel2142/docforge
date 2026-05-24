@@ -72,6 +72,9 @@ function isLikelyPageUrl(pathname: string): boolean {
 }
 
 // Markdown inline link [text](url) — NOT an image (negative lookbehind on `!`).
+// These share the `[^)\s]` / `[^>\s]` link-body limitation with the link regexes
+// in links.ts (a URL whose path contains a literal `)` is not handled) — if that
+// is ever tracked/fixed, fix these two in the same sweep.
 const ABS_LINK_RE = /(?<!!)\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
 const ABS_AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g;
 
@@ -79,7 +82,10 @@ const ABS_AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g;
  * Rewrite SAME-ORIGIN page links in `md` from absolute URLs to paths relative
  * to `pageUrl`'s converted output (.md), preserving the `#fragment`. External
  * links, same-origin non-page assets, and images are left untouched. Mirrors
- * delocalizeLinks but for real-origin (URL-crawl) sources.
+ * delocalizeLinks but for real-origin (URL-crawl) sources. Any `?query` is
+ * intentionally dropped (none survives urlToOutputPath — the converted file is
+ * `reference.md`, not `reference.md?v=2`), unlike delocalizeLinks which preserves
+ * the query for its sentinel paths.
  */
 export function relativizeSameOriginLinks(md: string, pageUrl: string): string {
   const pageRel = urlToOutputPath(pageUrl, ""); // bare posix relpath, e.g. "guide/intro.md"
