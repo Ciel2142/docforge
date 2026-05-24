@@ -3,7 +3,7 @@ import { basename, extname, relative, resolve, sep } from "node:path";
 
 import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
-import { rewriteInternalLinks, stripHeadingAnchors } from "./links.js";
+import { rewriteInternalLinks, stripHeadingAnchors, delocalizeLinks, LOCAL_BASE } from "./links.js";
 import { buildObsidianOutput, toObsidianWikilinks } from "./obsidian.js";
 import {
   buildOutput,
@@ -186,6 +186,10 @@ export async function runPipeline(
     if (opts.selector !== undefined) convertOpts.selector = opts.selector;
     if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
       convertOpts.url = item.srcUri;
+    } else {
+      // Local source: give Defuddle a structure-preserving base so relative
+      // internal links resolve correctly (empty base → `about:blank/...`).
+      convertOpts.url = LOCAL_BASE + encodeURI(item.key.split(sep).join("/"));
     }
     const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
     if (result.status === "empty") {
@@ -207,10 +211,11 @@ export async function runPipeline(
     const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
     const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
+    const localized = delocalizeLinks(result.body_md, fromRel);
     let bodyMd =
       format === "obsidian"
-        ? toObsidianWikilinks(result.body_md, fromRel)
-        : rewriteInternalLinks(result.body_md);
+        ? toObsidianWikilinks(localized, fromRel)
+        : rewriteInternalLinks(localized);
     if (
       opts.vlm &&
       opts.fetchOptions &&
