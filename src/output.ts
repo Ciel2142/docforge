@@ -89,4 +89,4 @@ export function writeReportJson(path: string, entries: ReportEntry[]): void {
   writeFileSync(path, JSON.stringify(report, null, 2), "utf8");
 }
 
-export { urlToOutputPath } from "./http/url.js";
+export { urlToOutputPath, relativizeSameOriginLinks } from "./http/url.js";

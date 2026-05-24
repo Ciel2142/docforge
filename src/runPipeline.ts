@@ -9,6 +9,7 @@ import {
   buildOutput,
   writeOutput,
   urlToOutputPath,
+  relativizeSameOriginLinks,
   type ReportEntry,
 } from "./output.js";
 import { log } from "./log.js";
@@ -211,11 +212,15 @@ export async function runPipeline(
     const stem = basename(item.key, extname(item.key)) || "index";
     const title = extractTitle(result.h1_text, result.soup_title_text, stem);
     const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
-    const localized = delocalizeLinks(result.body_md, fromRel);
+    const isUrlSource =
+      item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://");
+    const normalizedLinks = isUrlSource
+      ? relativizeSameOriginLinks(result.body_md, item.srcUri)
+      : delocalizeLinks(result.body_md, fromRel);
     let bodyMd =
       format === "obsidian"
-        ? toObsidianWikilinks(localized, fromRel)
-        : rewriteInternalLinks(localized);
+        ? toObsidianWikilinks(normalizedLinks, fromRel)
+        : rewriteInternalLinks(normalizedLinks);
     if (
       opts.vlm &&
       opts.fetchOptions &&
