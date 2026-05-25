@@ -49,3 +49,11 @@ export function isDescribable(src: string): boolean {
   if (NAME_SKIP.test(src)) return false;
   return RASTER_EXT.test(src);
 }
+
+/** True when an image src is a raster we can save as a sidecar asset. Unlike
+ *  isDescribable, this does NOT skip decorative names (logo/icon/…): a vault
+ *  should keep those images too. */
+export function isSavable(src: string): boolean {
+  if (src.startsWith("data:")) return RASTER_DATA.test(src);
+  return RASTER_EXT.test(src);
+}
