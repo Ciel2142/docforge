@@ -1,31 +1,9 @@
 import type { ImageRef } from "./types.js";
+import { fenceRanges, inAnyRange } from "../md-fences.js";
 
 const NAME_SKIP = /(icon|logo|sprite|badge|avatar|emoji|spacer|pixel)/i;
 const RASTER_EXT = /\.(png|jpe?g|webp|gif|bmp)(?:[?#]|$)/i;
 const RASTER_DATA = /^data:image\/(png|jpe?g|webp|gif|bmp)/i;
-
-/** Byte ranges (start inclusive, end exclusive) covered by ``` / ~~~ fences. */
-function fenceRanges(md: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  let offset = 0;
-  let fenceStart = -1;
-  for (const line of md.split("\n")) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      if (fenceStart === -1) fenceStart = offset;
-      else {
-        ranges.push([fenceStart, offset + line.length]);
-        fenceStart = -1;
-      }
-    }
-    offset += line.length + 1; // +1 for the consumed "\n"
-  }
-  if (fenceStart !== -1) ranges.push([fenceStart, md.length]);
-  return ranges;
-}
-
-function inAnyRange(i: number, ranges: Array<[number, number]>): boolean {
-  return ranges.some(([s, e]) => i >= s && i < e);
-}
 
 /** Find inline Markdown image refs, ignoring those inside fenced code blocks. */
 export function findImageRefs(md: string): ImageRef[] {
