@@ -5,6 +5,7 @@ import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
 import { rewriteInternalLinks, stripHeadingAnchors, delocalizeLinks, LOCAL_BASE } from "./links.js";
 import { buildObsidianOutput, toObsidianWikilinks } from "./obsidian.js";
+import { convertLinksToFootnotes } from "./citations.js";
 import {
   buildOutput,
   writeOutput,
@@ -34,6 +35,7 @@ export interface RunPipelineOptions {
   vlm?: VlmOptions;
   format?: "default" | "obsidian";
   saveImages?: boolean;
+  citeLinks?: boolean;
 }
 
 export interface PipelineResult {
@@ -44,6 +46,7 @@ export interface PipelineResult {
   report: ReportEntry[];
   vlm?: DescribeStats;
   assets?: AssetStats;
+  citations?: { footnotes: number };
 }
 
 function isUrl(s: string): boolean {
@@ -104,6 +107,7 @@ export async function runPipeline(
   const assetStore =
     format === "obsidian" && opts.saveImages ? new AssetStore(opts.outputDir) : undefined;
   const assetStats: AssetStats = { saved: 0, deduped: 0, skipped: 0, failed: 0 };
+  let citationFootnotes = 0;
   const outputsUsed = new Map<string, string>();
 
   for await (const item of source.iter()) {
@@ -272,6 +276,11 @@ export async function runPipeline(
       assetStats.skipped += ap.stats.skipped;
       assetStats.failed += ap.stats.failed;
     }
+    if (opts.citeLinks) {
+      const cited = convertLinksToFootnotes(bodyMd);
+      bodyMd = cited.md;
+      citationFootnotes += cited.count;
+    }
     const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
     const content =
       format === "obsidian"
@@ -290,5 +299,6 @@ export async function runPipeline(
     report,
     ...(opts.vlm ? { vlm: vlmStats } : {}),
     ...(assetStore ? { assets: assetStats } : {}),
+    ...(opts.citeLinks ? { citations: { footnotes: citationFootnotes } } : {}),
   };
 }
