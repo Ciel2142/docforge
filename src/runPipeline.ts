@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync } from "node:fs";
-import { basename, extname, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 
 import { convertHtml } from "./convert.js";
 import { extractTitle } from "./title.js";
@@ -19,6 +19,9 @@ import type { FetchOptions } from "./http/fetch.js";
 import type { CrawlOptions } from "./http/crawl.js";
 import { runVlmPass } from "./vlm/index.js";
 import type { VlmOptions, DescribeStats } from "./vlm/types.js";
+import { AssetStore } from "./assets/store.js";
+import { runAssetPass } from "./assets/index.js";
+import type { AssetStats } from "./assets/types.js";
 
 export interface RunPipelineOptions {
   source: string;
@@ -30,6 +33,7 @@ export interface RunPipelineOptions {
   selector?: string;
   vlm?: VlmOptions;
   format?: "default" | "obsidian";
+  saveImages?: boolean;
 }
 
 export interface PipelineResult {
@@ -39,6 +43,7 @@ export interface PipelineResult {
   failed: number;
   report: ReportEntry[];
   vlm?: DescribeStats;
+  assets?: AssetStats;
 }
 
 function isUrl(s: string): boolean {
@@ -67,6 +72,7 @@ export async function runPipeline(
   const format = opts.format ?? "default";
 
   let source: Source;
+  let sourceRoot: string | undefined;
   if (isUrl(opts.source)) {
     if (!opts.fetchOptions || !opts.crawlOptions) {
       throw new Error("URL sources require fetchOptions and crawlOptions");
@@ -86,6 +92,7 @@ export async function runPipeline(
     if (!st.isFile() && !st.isDirectory()) {
       throw new Error(`source is neither file nor directory: ${fsPath}`);
     }
+    sourceRoot = st.isFile() ? dirname(fsPath) : fsPath;
     source = new FilesystemSource(fsPath, opts.maxBytes);
   }
 
@@ -94,6 +101,9 @@ export async function runPipeline(
   let failed = 0;
   const report: ReportEntry[] = [];
   const vlmStats: DescribeStats = { described: 0, skipped: 0, failed: 0, cached: 0 };
+  const assetStore =
+    format === "obsidian" && opts.saveImages ? new AssetStore(opts.outputDir) : undefined;
+  const assetStats: AssetStats = { saved: 0, deduped: 0, skipped: 0, failed: 0 };
   const outputsUsed = new Map<string, string>();
 
   for await (const item of source.iter()) {
@@ -130,6 +140,14 @@ export async function runPipeline(
         md = buildObsidianOutput(stem, provenance, stripHeadingAnchors(toObsidianWikilinks(raw, fromRel)));
       } else {
         md = stripHeadingAnchors(rewriteInternalLinks(raw));
+      }
+      if (assetStore && opts.fetchOptions) {
+        const ap = await runAssetPass(md, item.srcUri, { fetchOpts: opts.fetchOptions }, assetStore);
+        md = ap.md;
+        assetStats.saved += ap.stats.saved;
+        assetStats.deduped += ap.stats.deduped;
+        assetStats.skipped += ap.stats.skipped;
+        assetStats.failed += ap.stats.failed;
       }
       writeOutput(outPath, md);
       converted += 1;
@@ -237,6 +255,22 @@ export async function runPipeline(
         log("warn", `vlm pass failed for ${item.key}: ${err}`);
       }
     }
+    if (assetStore) {
+      const ap = await runAssetPass(
+        bodyMd,
+        item.srcUri,
+        {
+          ...(opts.fetchOptions ? { fetchOpts: opts.fetchOptions } : {}),
+          ...(sourceRoot ? { sourceRoot } : {}),
+        },
+        assetStore,
+      );
+      bodyMd = ap.md;
+      assetStats.saved += ap.stats.saved;
+      assetStats.deduped += ap.stats.deduped;
+      assetStats.skipped += ap.stats.skipped;
+      assetStats.failed += ap.stats.failed;
+    }
     const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
     const content =
       format === "obsidian"
@@ -254,5 +288,6 @@ export async function runPipeline(
     failed,
     report,
     ...(opts.vlm ? { vlm: vlmStats } : {}),
+    ...(assetStore ? { assets: assetStats } : {}),
   };
 }
