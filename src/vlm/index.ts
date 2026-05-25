@@ -25,7 +25,7 @@ function makeCache(cacheDir: string | null): VlmCache | undefined {
   return cache;
 }
 
-function decodeDataUri(src: string): FetchedImage {
+export function decodeDataUri(src: string): FetchedImage {
   const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(src);
   if (!m) throw new Error("malformed data URI");
   const mime = m[1] ?? "application/octet-stream";
