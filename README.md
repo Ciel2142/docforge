@@ -124,14 +124,20 @@ internal-link rewriting; no Defuddle, no Kreuzberg).
 - Provenance moves into YAML frontmatter (`title`, `source`).
 - Internal links become vault-relative `[[wikilinks]]` (slug anchors are dropped,
   since Obsidian heading links need literal heading text).
-- Images and external links are left as standard Markdown.
+- Images and external links are left as standard Markdown (unless `--save-images`
+  is also passed — see below).
+
+Add `--save-images` to copy referenced raster images (png/jpg/webp/gif/bmp) into
+`<output>/_assets/` and rewrite each image reference as an Obsidian `![[embed]]`
+link. Default off; no effect without `--format obsidian`.
 
 ```bash
-docforge convert ~/docs/some-corpus --output ~/vault/some-corpus --format obsidian
+docforge convert ~/docs/some-corpus --output ~/vault/some-corpus \
+  --format obsidian --save-images
 ```
 
-OpenAPI output, callouts, image embeds, and embedding-based related-notes are not
-covered by `--format obsidian` (see the design spec).
+OpenAPI output, callouts, and embedding-based related-notes are not covered by
+`--format obsidian` (see the design spec).
 
 ## Development
 
