@@ -136,6 +136,16 @@ docforge convert ~/docs/some-corpus --output ~/vault/some-corpus \
   --format obsidian --save-images
 ```
 
+Add `--cite-links` (either format) to convert external `[text](https://…)` links
+into `[^n]` footnotes and append a `## References` block to each document.
+Identical URLs share one footnote; images, internal links, and code-fenced links
+are left untouched. This keeps long URLs out of embedding chunks (a trailing
+references chunk) and renders as native Obsidian footnotes. Default off.
+
+```bash
+docforge convert ~/docs/some-corpus --output ~/out --cite-links
+```
+
 OpenAPI output, callouts, and embedding-based related-notes are not covered by
 `--format obsidian` (see the design spec).
 
