@@ -44,6 +44,7 @@ export function buildProgram(): Command {
     .option("--selector <css>", "CSS selector override for body extraction (Defuddle contentSelector)")
     .option("--format <fmt>", "output format: default|obsidian", "default")
     .option("--save-images", "save referenced raster images beside the vault (--format obsidian only)", false)
+    .option("--cite-links", "convert external links to [^n] footnotes + a ## References block", false)
     .option("--describe-images", "describe images via a VLM (URL source only)", false)
     .option("--vlm-base-url <url>", "OpenAI-compatible VLM base URL incl. /v1 (env DOCFORGE_VLM_BASE_URL)")
     .option("--vlm-model <name>", "VLM model id (env DOCFORGE_VLM_MODEL)")
@@ -86,6 +87,7 @@ interface ConvertOpts {
   vlmConcurrency?: string | undefined;
   format?: string | undefined;
   saveImages?: boolean | undefined;
+  citeLinks?: boolean | undefined;
 }
 
 function isUrl(s: string): boolean {
@@ -122,6 +124,7 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
     if (format === "obsidian") pipelineOpts.saveImages = true;
     else log("warn", "--save-images ignored unless --format obsidian");
   }
+  if (opts.citeLinks) pipelineOpts.citeLinks = true;
 
   if (isUrl(sourceArg)) {
     const llmsFullMode = opts.llmsFull as "auto" | "force" | "off";
@@ -212,6 +215,9 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       "info",
       `images: saved=${result.assets.saved} deduped=${result.assets.deduped} skipped=${result.assets.skipped} failed=${result.assets.failed}`,
     );
+  }
+  if (result.citations) {
+    log("info", `citations: footnotes=${result.citations.footnotes}`);
   }
 
   if (total > 0 && result.failed / total > failThreshold) {
