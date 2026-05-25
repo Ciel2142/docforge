@@ -137,17 +137,18 @@ export async function runPipeline(
         const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
         const stem = basename(item.key, extname(item.key)) || "index";
         const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
-        md = buildObsidianOutput(stem, provenance, stripHeadingAnchors(toObsidianWikilinks(raw, fromRel)));
+        let body = stripHeadingAnchors(toObsidianWikilinks(raw, fromRel));
+        if (assetStore && opts.fetchOptions) {
+          const ap = await runAssetPass(body, item.srcUri, { fetchOpts: opts.fetchOptions }, assetStore);
+          body = ap.md;
+          assetStats.saved += ap.stats.saved;
+          assetStats.deduped += ap.stats.deduped;
+          assetStats.skipped += ap.stats.skipped;
+          assetStats.failed += ap.stats.failed;
+        }
+        md = buildObsidianOutput(stem, provenance, body);
       } else {
         md = stripHeadingAnchors(rewriteInternalLinks(raw));
-      }
-      if (assetStore && opts.fetchOptions) {
-        const ap = await runAssetPass(md, item.srcUri, { fetchOpts: opts.fetchOptions }, assetStore);
-        md = ap.md;
-        assetStats.saved += ap.stats.saved;
-        assetStats.deduped += ap.stats.deduped;
-        assetStats.skipped += ap.stats.skipped;
-        assetStats.failed += ap.stats.failed;
       }
       writeOutput(outPath, md);
       converted += 1;
