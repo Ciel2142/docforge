@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { convertHtml } from "../src/convert.js";
 
@@ -29,6 +30,22 @@ describe("convertHtml — table fidelity", () => {
     // the corruption we are fixing must NOT occur
     expect(md).not.toContain("coreAPI");
     // no placeholder leaks into output
+    expect(md).not.toMatch(/DOCFORGETABLE/);
+  });
+
+  test("recognises real Confluence markup and preserves status text", async () => {
+    const html = readFileSync("tests/fixtures/confluence-table.html", "utf8");
+    const r = await convertHtml(html);
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    const md = r.body_md;
+    expect(md).toContain("<table");
+    expect(md).toContain('colspan="2"');
+    expect(md).toContain('rowspan="2"');
+    expect(md).toContain("DONE");
+    expect(md).toContain("IN PROGRESS");
+    expect(md).not.toContain("confluenceTable"); // class attr stripped
+    expect(md).not.toContain("aui-lozenge");      // status <span> unwrapped to text
     expect(md).not.toMatch(/DOCFORGETABLE/);
   });
 });
