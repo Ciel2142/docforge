@@ -28,3 +28,33 @@ describe("swapComplexTables — simple tables", () => {
     expect(out).toContain("Ada");
   });
 });
+
+describe("swapComplexTables — classification", () => {
+  test("swaps a table with colspan >= 2", () => {
+    const html = `<table><tr><td colspan="2">Span</td></tr><tr><td>a</td><td>b</td></tr></table>`;
+    const { html: out, placeholders } = swapComplexTables(html);
+    expect(placeholders).toHaveLength(1);
+    expect(out).toContain(placeholders[0]!.token);
+    expect(out).not.toContain("<table");
+  });
+
+  test("swaps a table with rowspan >= 2", () => {
+    const html = `<table><tr><td rowspan="2">A</td><td>b</td></tr><tr><td>c</td></tr></table>`;
+    const { placeholders } = swapComplexTables(html);
+    expect(placeholders).toHaveLength(1);
+  });
+
+  test("swaps a table with block content (list) in a cell", () => {
+    const html = `<table><tr><td><ul><li>core</li><li>API</li></ul></td><td>x</td></tr></table>`;
+    const { placeholders } = swapComplexTables(html);
+    expect(placeholders).toHaveLength(1);
+    expect(placeholders[0]!.html).toContain("<ul>");
+  });
+
+  test("does NOT swap a table whose cells hold only inline content", () => {
+    const html =
+      `<table><tr><td><strong>b</strong> <code>x()</code><br>line <a href="/y">y</a></td></tr></table>`;
+    const { placeholders } = swapComplexTables(html);
+    expect(placeholders).toHaveLength(0);
+  });
+});

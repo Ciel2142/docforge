@@ -1,5 +1,9 @@
 import { parseHTML } from "linkedom";
 
+/** Block-level elements that, inside a cell, make GFM unable to represent the table. */
+const BLOCK_IN_CELL =
+  "ul,ol,p,table,pre,blockquote,div,h1,h2,h3,h4,h5,h6,hr,figure,figcaption";
+
 export interface Placeholder {
   token: string;
   html: string;
@@ -33,8 +37,14 @@ export function swapComplexTables(cleanedHtml: string): SwapResult {
   return { html: swapped ? doc.toString() : cleanedHtml, placeholders };
 }
 
-function isComplexTable(_table: Element): boolean {
-  return false; // real classification added in Task 3
+function isComplexTable(table: Element): boolean {
+  for (const cell of Array.from(table.querySelectorAll("th,td"))) {
+    const colspan = parseInt(cell.getAttribute("colspan") ?? "1", 10);
+    const rowspan = parseInt(cell.getAttribute("rowspan") ?? "1", 10);
+    if (colspan >= 2 || rowspan >= 2) return true;
+    if (cell.querySelector(BLOCK_IN_CELL)) return true;
+  }
+  return false;
 }
 
 function sanitizeTable(_table: Element): void {
