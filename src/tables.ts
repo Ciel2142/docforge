@@ -39,6 +39,8 @@ export function swapComplexTables(cleanedHtml: string): SwapResult {
   const runId = Math.random().toString(36).slice(2, 8);
   let swapped = false;
   for (const table of Array.from(doc.querySelectorAll("table"))) {
+    // Only act on the outermost table; a nested table rides inside its ancestor.
+    if (table.parentElement && table.parentElement.closest("table")) continue;
     if (!isComplexTable(table)) continue;
     sanitizeTable(table);
     const token = `DOCFORGETABLE${runId}N${placeholders.length}END`;

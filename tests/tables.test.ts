@@ -94,3 +94,15 @@ describe("swapComplexTables — sanitization", () => {
     expect(out).toContain("|");
   });
 });
+
+describe("swapComplexTables — nested tables", () => {
+  test("emits a single placeholder; the inner table rides inside the outer block", () => {
+    const html =
+      `<table><tr><td><table><tr><td colspan="2">inner</td></tr></table></td></tr></table>`;
+    const { html: out, placeholders } = swapComplexTables(html);
+    expect(placeholders).toHaveLength(1);
+    expect(placeholders[0]!.html).toContain("inner");
+    expect((placeholders[0]!.html.match(/<table/g) ?? []).length).toBe(2);
+    expect(out).not.toContain("<table");
+  });
+});
