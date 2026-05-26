@@ -1,6 +1,7 @@
 import { extractBytesSync, type ExtractionConfig } from "@kreuzberg/node";
 import { parseHTML } from "linkedom";
 import { extractMainContent, type ExtractOptions } from "./extract.js";
+import { swapComplexTables, restoreTables } from "./tables.js";
 
 const KZ_CONFIG: ExtractionConfig = {
   useCache: false,
@@ -64,15 +65,17 @@ export async function convertHtml(
     const soupTitle = extractTitle(rawHtml);
     const h1 = extractH1(rawHtml, opts.selector);
 
+    const { html, placeholders } = swapComplexTables(extracted.cleanedHtml);
     const result = extractBytesSync(
-      Buffer.from(extracted.cleanedHtml, "utf8"),
+      Buffer.from(html, "utf8"),
       "text/html",
       KZ_CONFIG,
     );
+    const body_md = restoreTables(result.content.trim(), placeholders);
 
     return {
       status: "ok",
-      body_md: result.content.trim(),
+      body_md,
       h1_text: h1,
       soup_title_text: soupTitle,
     };
