@@ -57,6 +57,15 @@ Override per run with `--selector <css>` when the picker chooses the wrong
 element on a specific site. Use `--format <default|obsidian>` to switch the
 output shape (see [Output formats](#output-formats) below).
 
+### Tables
+
+Most tables convert to GitHub-Flavoured Markdown. Tables that GFM cannot
+represent faithfully — those with merged cells (`colspan`/`rowspan`) or
+block-level content inside a cell (lists, paragraphs, nested tables) — are
+emitted as a sanitized HTML `<table>` block instead, preserving their
+structure. The embedded HTML renders on GitHub and in Obsidian; simple tables
+are unaffected. Cell background colour is not preserved.
+
 ### Image description (VLM)
 
 Documentation images — diagrams, screenshots, figures — are normally lost in the
