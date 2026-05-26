@@ -59,6 +59,48 @@ describe("runPipeline format=obsidian", () => {
     expect(out).toContain("Source: page.html");
     expect(out).toContain("[Other](other.md)");
   });
+
+  // Regression guard for the spec-flagged edge case: a complex table emitted as
+  // embedded HTML must survive the obsidian transforms (wikilink/autolink/frontmatter)
+  // untouched. Uses content-dense markup so Defuddle retains the in-cell <ul>
+  // (Defuddle's content scoring drops block content in sparse pages — out of scope here).
+  test("preserves embedded HTML tables (complex) through obsidian transforms", async () => {
+    const inDir = join(tmp, "in");
+    const outDir = join(tmp, "out");
+    mkdirSync(inDir, { recursive: true });
+    const page = `<!doctype html><html><head><title>Doc</title></head><body><main>
+<h1>Doc</h1>
+<p>Intro paragraph with enough words to keep this as real article content here. See <a href="other.html">Other</a> for details.</p>
+<table><thead><tr><th>Name</th><th>Role</th></tr></thead>
+<tbody><tr><td>Ada</td><td>Engineer</td></tr></tbody></table>
+<p>Middle paragraph separating the two tables with several words of filler.</p>
+<table>
+<tr><td rowspan="2">Ada</td><td>Owns:<ul><li>core</li><li>API</li></ul></td></tr>
+<tr><td>Author</td></tr>
+</table>
+<p>Trailing paragraph also with several words to keep the body large enough.</p>
+</main></body></html>`;
+    writeFileSync(join(inDir, "page.html"), page);
+
+    const res = await runPipeline({
+      source: inDir,
+      outputDir: outDir,
+      maxBytes: 10485760,
+      dryRun: false,
+      format: "obsidian",
+    });
+    expect(res.converted).toBe(1);
+
+    const out = readFileSync(join(outDir, "page.md"), "utf8");
+    // complex table preserved as embedded HTML through the obsidian path
+    expect(out).toContain("<table");
+    expect(out).toContain('rowspan="2"');
+    expect(out).toContain("<li>core</li>");
+    expect(out).not.toContain("coreAPI");
+    expect(out).not.toMatch(/DOCFORGETABLE/);
+    // obsidian wikilink transform ran on the same document without harming the table
+    expect(out).toContain("[[other|Other]]");
+  });
 });
 
 describe("runPipeline local cross-dir internal links (docf-7w5)", () => {
