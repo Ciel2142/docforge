@@ -4,6 +4,20 @@ import { parseHTML } from "linkedom";
 const BLOCK_IN_CELL =
   "ul,ol,p,table,pre,blockquote,div,h1,h2,h3,h4,h5,h6,hr,figure,figcaption";
 
+/** Elements allowed to remain inside an emitted HTML table. Anything else is unwrapped to its children. */
+const ALLOWED_TAGS = new Set([
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+  "strong", "em", "b", "i", "u", "s", "code", "a", "br", "ul", "ol", "li", "p", "sup", "sub",
+]);
+
+/** Elements removed wholesale (content dropped, not unwrapped). */
+const DROP_TAGS = new Set([
+  "script", "style", "iframe", "object", "embed", "noscript", "template",
+]);
+
+const KEEP_ATTRS_CELL = new Set(["colspan", "rowspan", "scope"]);
+const KEEP_ATTRS_LINK = new Set(["href"]);
+
 export interface Placeholder {
   token: string;
   html: string;
@@ -47,8 +61,25 @@ function isComplexTable(table: Element): boolean {
   return false;
 }
 
-function sanitizeTable(_table: Element): void {
-  // real sanitization added in Task 4
+function sanitizeTable(table: Element): void {
+  for (const el of Array.from(table.querySelectorAll("*"))) {
+    const tag = el.tagName.toLowerCase();
+    if (DROP_TAGS.has(tag)) {
+      el.remove();
+      continue;
+    }
+    if (!ALLOWED_TAGS.has(tag)) {
+      el.replaceWith(...Array.from(el.childNodes));
+      continue;
+    }
+    const keep = tag === "a" ? KEEP_ATTRS_LINK : KEEP_ATTRS_CELL;
+    for (const name of Array.from(el.attributes).map((a) => a.name)) {
+      if (!keep.has(name)) el.removeAttribute(name);
+    }
+  }
+  for (const name of Array.from(table.attributes).map((a) => a.name)) {
+    table.removeAttribute(name);
+  }
 }
 
 /** Re-insert each stashed HTML table where its placeholder landed in the Markdown. */

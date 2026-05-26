@@ -58,3 +58,39 @@ describe("swapComplexTables — classification", () => {
     expect(placeholders).toHaveLength(0);
   });
 });
+
+describe("swapComplexTables — sanitization", () => {
+  test("strips class/style/onclick/data-* but keeps colspan", () => {
+    const html =
+      `<table><tr><td colspan="2" class="c" style="color:red" data-x="1" onclick="e()">h</td></tr>` +
+      `<tr><td>a</td><td>b</td></tr></table>`;
+    const { placeholders } = swapComplexTables(html);
+    const out = placeholders[0]!.html;
+    expect(out).toContain('colspan="2"');
+    expect(out).not.toContain("class");
+    expect(out).not.toContain("style");
+    expect(out).not.toContain("onclick");
+    expect(out).not.toContain("data-x");
+  });
+
+  test("removes <script> and unwraps disallowed elements to their text", () => {
+    const html =
+      `<table><tr><td colspan="2"><span class="status">Done</span><script>evil()</script></td></tr>` +
+      `<tr><td>a</td><td>b</td></tr></table>`;
+    const out = swapComplexTables(html).placeholders[0]!.html;
+    expect(out).toContain("Done");
+    expect(out).not.toContain("<span");
+    expect(out).not.toContain("evil");
+    expect(out).not.toContain("<script");
+  });
+
+  test("keeps inline formatting and literal pipes inside cells", () => {
+    const html =
+      `<table><tr><td colspan="2"><strong>b</strong> a | b <code>x()</code></td></tr>` +
+      `<tr><td>a</td><td>b</td></tr></table>`;
+    const out = swapComplexTables(html).placeholders[0]!.html;
+    expect(out).toContain("<strong>b</strong>");
+    expect(out).toContain("<code>x()</code>");
+    expect(out).toContain("|");
+  });
+});
