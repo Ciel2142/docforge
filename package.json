@@ -1,6 +1,6 @@
 {
   "name": "docforge",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Convert documentation sources to Markdown for RAG ingestion.",
   "type": "module",
   "license": "MIT",

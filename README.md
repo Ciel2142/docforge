@@ -2,8 +2,9 @@
 
 Convert documentation HTML and OpenAPI specs to Markdown for RAG ingestion.
 
-v0.6.0 scope: HTML (Sphinx, Material for MkDocs, Docusaurus, VitePress,
-GitHub-flavoured Markdown, mdBook, bare HTML5) + OpenAPI 3.x JSON/YAML.
+v0.8.0 scope: HTML (Sphinx, Material for MkDocs, Docusaurus, VitePress,
+GitHub-flavoured Markdown, mdBook, bare HTML5) + OpenAPI 3.x JSON/YAML +
+JS-rendered (SPA) sites via optional --render playwright backend.
 
 ## Install
 
@@ -166,6 +167,27 @@ docforge convert ~/docs/some-corpus --output ~/out --cite-links
 
 OpenAPI output, callouts, and embedding-based related-notes are not covered by
 `--format obsidian` (see the design spec).
+
+## JS-rendered sites (SPA docs)
+
+Sites that render content client-side yield empty shells over plain HTTP. Opt in to
+headless rendering:
+
+```bash
+npm i playwright && npx playwright install chromium   # one-time, optional peer dep
+docforge convert https://spa-docs.example.com/docs --output ./out --render auto
+```
+
+- `--render auto` — fetch statically first; pages whose visible body text is near-empty
+  (< 200 chars) are re-rendered in headless chromium. Link discovery uses the rendered
+  DOM, so SPA navigation is crawled.
+- `--render force` — render every HTML page (slower; ~1–3s per page).
+- Robots, `--scope`, `--max-pages`, `--max-depth`, crawl-delay, and `--max-bytes` apply
+  unchanged. Rendered output is not cached between runs (static responses still are).
+- `--auth-header` is honored during rendering and sent only to the root origin — never
+  to cross-origin subresources.
+- Known limitation: subresources fetched by the browser during render (scripts, XHR)
+  are not robots-checked — robots governs which page URLs are crawled, as before.
 
 ## Development
 
