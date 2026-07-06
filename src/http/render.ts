@@ -66,6 +66,7 @@ const NETWORKIDLE_SETTLE_MS = 5_000;
 export class Renderer implements RendererHandle {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
+  private contextInit: Promise<BrowserContext> | null = null;
   private relaunchBudget = 1; // one relaunch per consecutive-crash streak
 
   constructor(
@@ -75,6 +76,23 @@ export class Renderer implements RendererHandle {
 
   private async getContext(): Promise<BrowserContext> {
     if (this.context && this.browser?.isConnected()) return this.context;
+    // Single-flight: concurrent callers during the init window (first call, or
+    // after relaunch/close() nulls context) share one in-flight launch instead of
+    // each launching their own browser — the later assignment would otherwise
+    // orphan the earlier one (leaked chromium process, only the last one closed).
+    if (this.contextInit) return this.contextInit;
+    this.contextInit = this.initContext();
+    try {
+      return await this.contextInit;
+    } finally {
+      // Clear regardless of outcome: on failure the next call must retry (not
+      // cache the rejection forever); on success the live-context fast path
+      // above takes over on subsequent calls.
+      this.contextInit = null;
+    }
+  }
+
+  private async initContext(): Promise<BrowserContext> {
     if (this.browser) await this.browser.close().catch(() => {});
     this.browser = await this.pw.chromium.launch({ headless: true });
     this.context = await this.browser.newContext({ userAgent: this.opts.userAgent });
