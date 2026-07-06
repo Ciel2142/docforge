@@ -3,6 +3,8 @@ import {
   normalizeUrl,
   relativizeSameOriginLinks,
   sameOrigin,
+  scopePrefixFromSeed,
+  underScope,
   urlToOutputPath,
 } from "../src/http/url.js";
 
@@ -182,5 +184,71 @@ describe("relativizeSameOriginLinks", () => {
         PAGE,
       ),
     ).toBe("[v2](../api/reference.md#post-widgets)");
+  });
+});
+
+describe("scopePrefixFromSeed", () => {
+  test("root seed is unrestricted", () => {
+    expect(scopePrefixFromSeed("https://x.com/")).toBe(null);
+    expect(scopePrefixFromSeed("https://x.com")).toBe(null);
+  });
+
+  test("trailing-slash seed uses its own path", () => {
+    expect(scopePrefixFromSeed("https://x.com/docs/")).toBe("/docs/");
+    expect(scopePrefixFromSeed("https://x.com/a/b/")).toBe("/a/b/");
+  });
+
+  test("extensionless seed is treated as a directory", () => {
+    expect(scopePrefixFromSeed("https://x.com/docs")).toBe("/docs/");
+    expect(scopePrefixFromSeed("https://x.com/a/b/c")).toBe("/a/b/c/");
+  });
+
+  test("seed with file extension scopes to its directory", () => {
+    expect(scopePrefixFromSeed("https://x.com/docs/intro.html")).toBe("/docs/");
+  });
+
+  test("dotted segment counts as a file (scopes wider)", () => {
+    expect(scopePrefixFromSeed("https://x.com/docs/v1.2")).toBe("/docs/");
+  });
+
+  test("file at root is unrestricted", () => {
+    expect(scopePrefixFromSeed("https://x.com/intro.html")).toBe(null);
+  });
+
+  test("query and fragment are ignored", () => {
+    expect(scopePrefixFromSeed("https://x.com/docs/?q=1#frag")).toBe("/docs/");
+  });
+
+  test("invalid url returns null", () => {
+    expect(scopePrefixFromSeed("not a url")).toBe(null);
+  });
+});
+
+describe("underScope", () => {
+  test("path under prefix matches", () => {
+    expect(underScope("https://x.com/docs/a", "/docs/")).toBe(true);
+    expect(underScope("https://x.com/docs/deep/page.html", "/docs/")).toBe(true);
+  });
+
+  test("prefix itself matches", () => {
+    expect(underScope("https://x.com/docs/", "/docs/")).toBe(true);
+  });
+
+  test("extensionless seed page itself matches", () => {
+    expect(underScope("https://x.com/docs", "/docs/")).toBe(true);
+  });
+
+  test("sibling with shared string prefix does not match", () => {
+    expect(underScope("https://x.com/docsother", "/docs/")).toBe(false);
+    expect(underScope("https://x.com/docsother/a", "/docs/")).toBe(false);
+  });
+
+  test("outside prefix does not match", () => {
+    expect(underScope("https://x.com/blog/b", "/docs/")).toBe(false);
+    expect(underScope("https://x.com/", "/docs/")).toBe(false);
+  });
+
+  test("invalid url does not match", () => {
+    expect(underScope("not a url", "/docs/")).toBe(false);
   });
 });

@@ -39,6 +39,43 @@ export function sameOrigin(a: string, b: string): boolean {
   return ua.protocol === ub.protocol && ua.host === ub.host;
 }
 
+/**
+ * Derive the crawl scope prefix from a seed URL (wget --no-parent semantics).
+ * Returns null when unrestricted: root seed, file at root, or invalid URL.
+ * A non-null result always starts and ends with "/" (e.g. "/docs/").
+ *
+ * An extensionless last segment ("/docs") is treated as a directory, not a
+ * page — the common docs-seed form; strict dirname would silently mean
+ * whole-origin. Any dotted last segment ("/docs/v1.2", "/docs/intro.html")
+ * scopes to its directory: erring wider never loses pages.
+ */
+export function scopePrefixFromSeed(seedUrl: string): string | null {
+  const normalized = normalizeUrl(seedUrl);
+  if (!normalized) return null;
+  const path = new URL(normalized).pathname;
+  if (path === "/") return null;
+  if (path.endsWith("/")) return path;
+  const lastSegment = path.split("/").pop() ?? "";
+  if (lastSegment.includes(".")) {
+    const dir = path.slice(0, path.lastIndexOf("/") + 1);
+    return dir === "/" ? null : dir;
+  }
+  return `${path}/`;
+}
+
+/**
+ * True when `url`'s pathname is under `prefix` ("/docs/" admits "/docs/a"
+ * and "/docs/" itself), or is the extensionless seed page ("/docs" when the
+ * prefix is "/docs/"). Origin is NOT checked here — callers pair this with
+ * sameOrigin / an origin filter.
+ */
+export function underScope(url: string, prefix: string): boolean {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return false;
+  const path = new URL(normalized).pathname;
+  return path.startsWith(prefix) || `${path}/` === prefix;
+}
+
 export function urlToOutputPath(url: string, outputDir: string): string {
   const normalized = normalizeUrl(url);
   if (!normalized) {
