@@ -95,13 +95,17 @@ export class Renderer implements RendererHandle {
   private async initContext(): Promise<BrowserContext> {
     if (this.browser) await this.browser.close().catch(() => {});
     this.browser = await this.pw.chromium.launch({ headless: true });
-    this.context = await this.browser.newContext({ userAgent: this.opts.userAgent });
+    // Build fully (including auth route registration) on a local binding before
+    // publishing to this.context — a concurrent getContext() fast-path read could
+    // otherwise observe a context whose auth interception isn't wired up yet and
+    // render unauthenticated (fail-closed here; never risk leaking the credential).
+    const context = await this.browser.newContext({ userAgent: this.opts.userAgent });
     const auth = this.opts.auth;
     if (auth) {
       // Origin-scoped auth via route interception. setExtraHTTPHeaders would send
       // the credential on EVERY request from the context, including cross-origin
       // subresources — same invariant as fetch.ts (header only when origin matches).
-      await this.context.route("**/*", async (route) => {
+      await context.route("**/*", async (route) => {
         let origin = "";
         try {
           origin = new URL(route.request().url()).origin;
@@ -117,7 +121,8 @@ export class Renderer implements RendererHandle {
         }
       });
     }
-    return this.context;
+    this.context = context;
+    return context;
   }
 
   async render(url: string): Promise<RenderResult> {
