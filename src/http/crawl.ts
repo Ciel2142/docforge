@@ -1,6 +1,7 @@
 import PQueue from "p-queue";
 import { load as loadHtml } from "cheerio";
-import { fetchUrl, FetchError, type FetchOptions } from "./fetch.js";
+import { FetchError, type FetchOptions } from "./fetch.js";
+import { fetchMaybeRender, type PageRenderer, type RenderMode } from "./render.js";
 import { normalizeUrl, sameOrigin, underScope } from "./url.js";
 import type { Robots } from "./robots.js";
 import { log } from "../log.js";
@@ -15,6 +16,7 @@ export interface CrawlOptions {
   singlePage?: boolean;
   excludeHosts?: string[];
   scopePrefix?: string; // path prefix (e.g. "/docs/"); undefined = unrestricted
+  renderMode?: RenderMode; // headless render: "auto" (heuristic) | "force" (all HTML)
 }
 
 export interface CrawlItem {
@@ -22,6 +24,7 @@ export interface CrawlItem {
   bytes: Buffer;
   contentType: string;
   error?: string;
+  rendered?: boolean; // bytes came from the headless renderer
 }
 
 export async function* crawlBfs(
@@ -29,6 +32,7 @@ export async function* crawlBfs(
   robots: Robots,
   fetchOpts: FetchOptions,
   crawlOpts: CrawlOptions,
+  renderer: PageRenderer | null = null,
 ): AsyncIterable<CrawlItem> {
   const root = normalizeUrl(rootUrl);
   if (!root) throw new Error(`invalid root url: ${rootUrl}`);
@@ -56,8 +60,13 @@ export async function* crawlBfs(
         if (yielded >= crawlOpts.maxPages) return;
         let item: CrawlItem;
         try {
-          const res = await fetchUrl(entry.url, fetchOpts);
-          item = { url: entry.url, bytes: res.bytes, contentType: res.contentType };
+          const res = await fetchMaybeRender(entry.url, fetchOpts, crawlOpts.renderMode, renderer);
+          item = {
+            url: entry.url,
+            bytes: res.bytes,
+            contentType: res.contentType,
+            ...(res.rendered ? { rendered: true } : {}),
+          };
         } catch (e) {
           if (e instanceof FetchError) {
             log("debug", `crawl fetch fail ${entry.url}: ${e.message}`);
