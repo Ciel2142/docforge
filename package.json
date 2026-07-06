@@ -38,9 +38,18 @@
     "@types/js-yaml": "^4",
     "@types/node": "^22",
     "@types/proper-lockfile": "^4.1.4",
+    "playwright": "^1.61.1",
     "tsx": "^4",
     "typescript": "^5.7",
     "vitest": "^2"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"
