@@ -8,6 +8,7 @@ import { log, setLevel } from "./log.js";
 import { registerOpenapiSubcommand } from "./openapi/cli.js";
 import { runPipeline, type RunPipelineOptions } from "./runPipeline.js";
 import { scopePrefixFromSeed } from "./http/url.js";
+import { probeRenderAvailable } from "./http/render.js";
 
 const DEFAULT_USER_AGENT = `docforge/${VERSION}`;
 const DEFAULT_CACHE_DIR = "~/.cache/docforge";
@@ -55,6 +56,11 @@ export function buildProgram(): Command {
     .option("--vlm-concurrency <N>", "parallel VLM calls", "2")
     .option("--llms-full <mode>", "llms-full.txt mode: auto|force|off (URL source only)", "auto")
     .option("--scope <mode>", "crawl scope: path (seed path prefix) | origin (whole origin) (URL source only)", "path")
+    .option(
+      "--render <mode>",
+      "render JS-only pages via headless chromium: auto|force|off (URL source only; requires playwright)",
+      "off",
+    )
     .action(async (source: string, opts: ConvertOpts) => {
       const code = await runConvert(source, opts);
       if (code !== 0) process.exit(code);
@@ -80,6 +86,7 @@ interface ConvertOpts {
   selector?: string | undefined;
   llmsFull: string;
   scope?: string | undefined;
+  render?: string | undefined;
   authHeader?: string | undefined;
   describeImages?: boolean | undefined;
   vlmBaseUrl?: string | undefined;
@@ -140,6 +147,19 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       log("error", `invalid --scope value: ${opts.scope} (expected path|origin)`);
       return 2;
     }
+    const renderMode = (opts.render ?? "off") as "auto" | "force" | "off";
+    if (renderMode !== "off" && renderMode !== "auto" && renderMode !== "force") {
+      log("error", `invalid --render value: ${opts.render} (expected auto|force|off)`);
+      return 2;
+    }
+    if (renderMode !== "off") {
+      try {
+        await probeRenderAvailable();
+      } catch (e) {
+        log("error", (e as Error).message);
+        return 2;
+      }
+    }
     pipelineOpts.fetchOptions = {
       userAgent: opts.userAgent,
       timeoutMs: 30_000,
@@ -160,6 +180,7 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
       userAgent: opts.userAgent,
       llmsFullMode,
       ...(scopePrefix ? { scopePrefix } : {}),
+      ...(renderMode !== "off" ? { renderMode } : {}),
     };
     if (opts.describeImages) {
       const baseUrl = opts.vlmBaseUrl ?? process.env.DOCFORGE_VLM_BASE_URL;
@@ -195,6 +216,10 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
     log("warn", "--describe-images ignored for non-URL sources (v1 supports URL sources only)");
   }
 
+  if (opts.render && opts.render !== "off" && !isUrl(sourceArg)) {
+    log("warn", "--render ignored for non-URL sources");
+  }
+
   let result;
   try {
     result = await runPipeline(pipelineOpts);
@@ -228,6 +253,9 @@ export async function runConvert(sourceArg: string, opts: ConvertOpts): Promise<
   }
   if (result.citations) {
     log("info", `citations: footnotes=${result.citations.footnotes}`);
+  }
+  if (result.rendered !== undefined) {
+    log("info", `render: rendered=${result.rendered}`);
   }
 
   if (total > 0 && result.failed / total > failThreshold) {
