@@ -40,6 +40,10 @@ A page seed scopes to its directory (`/guide/intro.html` → `/guide/`); an
 extensionless seed is treated as a directory (`/guide` → `/guide/`), and any
 dotted last segment counts as a page too (`/guide/v1.2` → `/guide/`). Root
 seeds are unaffected. Pass `--scope origin` to crawl the whole origin.
+Watch out with extensionless *page* seeds (`/guide/what-is-angular` →
+`/guide/what-is-angular/` — the SPA-style URL shape): if the scope ends up
+excluding every discovered link, the crawl stops at the seed and docforge
+warns, suggesting `--scope origin` or seeding the docs root.
 
 ```bash
 docforge convert https://docs.example.com/ --output ./md

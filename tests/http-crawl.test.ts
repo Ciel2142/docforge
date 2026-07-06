@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import { AddressInfo } from "node:net";
 import { crawlBfs } from "../src/http/crawl.js";
@@ -152,6 +152,82 @@ describe("crawlBfs", () => {
       `http://localhost:${port}/docs/`,
       `http://localhost:${port}/docs/a`,
     ]);
+  });
+
+  test("honors <base href> when resolving relative links", async () => {
+    // SPA pattern (e.g. angular.io): <base href="/"> + relative hrefs. Browser
+    // resolves "docs" to /docs; resolving against the page URL instead yields
+    // junk like /guide/docs (docf-qmj).
+    pages = {
+      "/guide/page": `<html><head><base href="/"></head><body><a href="docs">d</a><a href="start/routing">r</a></body></html>`,
+      "/docs": `<html>docs</html>`,
+      "/start/routing": `<html>routing</html>`,
+      "/guide/docs": `<html>wrong</html>`,
+      "/guide/start/routing": `<html>wrong</html>`,
+    };
+    const urls = await collect(`http://localhost:${port}/guide/page`, allowAll());
+    expect(urls).toEqual([
+      `http://localhost:${port}/docs`,
+      `http://localhost:${port}/guide/page`,
+      `http://localhost:${port}/start/routing`,
+    ]);
+  });
+
+  test("resolves a relative <base href> against the page URL", async () => {
+    pages = {
+      "/a/page": `<html><head><base href="sub/"></head><body><a href="x">x</a></body></html>`,
+      "/a/sub/x": `<html>x</html>`,
+    };
+    const urls = await collect(`http://localhost:${port}/a/page`, allowAll());
+    expect(urls).toEqual([
+      `http://localhost:${port}/a/page`,
+      `http://localhost:${port}/a/sub/x`,
+    ]);
+  });
+
+  test("ignores an unparseable <base href>", async () => {
+    pages = {
+      "/p": `<html><head><base href="mailto:x"></head><body><a href="/a">a</a></body></html>`,
+      "/a": `<html>a</html>`,
+    };
+    const urls = await collect(`http://localhost:${port}/p`, allowAll());
+    expect(urls).toEqual([`http://localhost:${port}/p`, `http://localhost:${port}/a`].sort());
+  });
+
+  test("warns when scopePrefix excludes every same-origin link (1-page crawl)", async () => {
+    pages = {
+      "/guide/page": `<html><a href="/docs">d</a><a href="/start">s</a></html>`,
+      "/docs": `<html>d</html>`,
+      "/start": `<html>s</html>`,
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const urls = await collect(`http://localhost:${port}/guide/page`, allowAll(), {
+        scopePrefix: "/guide/page/",
+      });
+      expect(urls).toEqual([`http://localhost:${port}/guide/page`]);
+      const warned = spy.mock.calls.some(
+        (c) => String(c[0]).includes("WARN") && String(c[0]).includes("--scope origin"),
+      );
+      expect(warned).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("does not warn when scope admits links", async () => {
+    pages = {
+      "/docs/": `<html><a href="/docs/a">a</a></html>`,
+      "/docs/a": `<html>a</html>`,
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await collect(`http://localhost:${port}/docs/`, allowAll(), { scopePrefix: "/docs/" });
+      const warned = spy.mock.calls.some((c) => String(c[0]).includes("--scope origin"));
+      expect(warned).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("without scopePrefix the whole origin is crawled (regression)", async () => {

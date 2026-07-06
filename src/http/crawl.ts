@@ -52,6 +52,7 @@ export async function* crawlBfs(
   const frontier: { url: string; depth: number }[] = [{ url: root, depth: 0 }];
   const results: CrawlItem[] = [];
   let yielded = 0;
+  let scopeDropped = 0;
 
   while (frontier.length > 0 && yielded < crawlOpts.maxPages) {
     const batch = frontier.splice(0, frontier.length);
@@ -86,7 +87,10 @@ export async function* crawlBfs(
         const links = extractLinks(item.bytes.toString("utf8"), entry.url);
         for (const link of links) {
           if (!sameOrigin(link, root)) continue;
-          if (crawlOpts.scopePrefix && !underScope(link, crawlOpts.scopePrefix)) continue;
+          if (crawlOpts.scopePrefix && !underScope(link, crawlOpts.scopePrefix)) {
+            scopeDropped += 1;
+            continue;
+          }
           if (!robots.isAllowed(link, crawlOpts.userAgent)) continue;
           if (visited.has(link)) continue;
           visited.add(link);
@@ -99,15 +103,28 @@ export async function* crawlBfs(
       yield results.shift()!;
     }
   }
+  // No link ever passed the scope filter: the classic SPA footgun — an
+  // extensionless page seed scoped to its own pseudo-directory (docf-dxo).
+  if (visited.size === 1 && scopeDropped > 0 && crawlOpts.scopePrefix) {
+    log(
+      "warn",
+      `scope ${crawlOpts.scopePrefix} excluded all ${scopeDropped} same-origin link(s) found — ` +
+        `SPA page seed? retry with --scope origin or seed the docs root`,
+    );
+  }
 }
 
 function extractLinks(html: string, baseUrl: string): string[] {
   const $ = loadHtml(html);
+  // <base href> shifts relative-link resolution (first <base> wins, per HTML
+  // spec); an unresolvable/non-http value falls back to the page URL.
+  const baseHref = $("base[href]").first().attr("href");
+  const base = (baseHref !== undefined ? normalizeUrl(baseHref, baseUrl) : null) ?? baseUrl;
   const out: string[] = [];
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href");
     if (!href) return;
-    const normalized = normalizeUrl(href, baseUrl);
+    const normalized = normalizeUrl(href, base);
     if (normalized) out.push(normalized);
   });
   return out;
