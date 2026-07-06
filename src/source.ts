@@ -13,6 +13,7 @@ import { crawlBfs, type CrawlOptions } from "./http/crawl.js";
 import { normalizeUrl, sameOrigin, underScope } from "./http/url.js";
 import { probeLlmsFullTxt } from "./http/llms.js";
 import { probeLlmsTxt, type LlmsIndexEntry } from "./http/llms-index.js";
+import { fetchMaybeRender, type PageRenderer } from "./http/render.js";
 import { log } from "./log.js";
 
 export interface SourceItem {
@@ -24,6 +25,7 @@ export interface SourceItem {
   kind?: "html" | "llms-full" | "markdown" | "openapi";
   outputKey?: string;      // when set, runPipeline uses this for output path (host-prefixed for cross-origin)
   spec?: Record<string, unknown>; // parsed OpenAPI 3.x spec when kind === "openapi"
+  rendered?: boolean;      // bytes came from the headless renderer
 }
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
@@ -128,6 +130,7 @@ export class HttpSource implements Source {
     private readonly rootUrl: string,
     private readonly fetchOpts: FetchOptions,
     private readonly crawlOpts: CrawlOptions,
+    private readonly renderer: PageRenderer | null = null,
   ) {}
 
   async *iter(): AsyncIterable<SourceItem> {
@@ -136,7 +139,12 @@ export class HttpSource implements Source {
 
     if (this.crawlOpts.singlePage) {
       try {
-        const res = await fetchUrl(normalized, this.fetchOpts);
+        const res = await fetchMaybeRender(
+          normalized,
+          this.fetchOpts,
+          this.crawlOpts.renderMode,
+          this.renderer,
+        );
         if (!/^text\/html/i.test(res.contentType)) {
           const oa = maybeOpenapiItem(normalized, res);
           if (oa) {
@@ -151,6 +159,7 @@ export class HttpSource implements Source {
           srcUri: normalized,
           bytes: res.bytes,
           contentType: res.contentType,
+          ...(res.rendered ? { rendered: true } : {}),
         };
       } catch (e) {
         if (e instanceof FetchError) {
@@ -245,7 +254,12 @@ export class HttpSource implements Source {
     const buffered: SourceItem[] = [];
     const tasks = filtered.slice(0, this.crawlOpts.maxPages).map((url) => async () => {
       try {
-        const res = await fetchUrl(url, this.fetchOpts);
+        const res = await fetchMaybeRender(
+          url,
+          this.fetchOpts,
+          this.crawlOpts.renderMode,
+          this.renderer,
+        );
         if (!/^text\/html/i.test(res.contentType)) {
           const oa = maybeOpenapiItem(url, res);
           if (oa) {
@@ -260,6 +274,7 @@ export class HttpSource implements Source {
           srcUri: url,
           bytes: res.bytes,
           contentType: res.contentType,
+          ...(res.rendered ? { rendered: true } : {}),
         });
       } catch (e) {
         if (e instanceof FetchError) {
@@ -351,7 +366,7 @@ export class HttpSource implements Source {
   private async *iterFromBfs(
     robots: { isAllowed(url: string, ua: string): boolean; getCrawlDelay(ua: string): number; getSitemaps(): string[] },
   ): AsyncIterable<SourceItem> {
-    for await (const item of crawlBfs(this.rootUrl, robots, this.fetchOpts, this.crawlOpts)) {
+    for await (const item of crawlBfs(this.rootUrl, robots, this.fetchOpts, this.crawlOpts, this.renderer)) {
       if (item.error) {
         yield {
           key: pathFromUrl(item.url),
@@ -379,6 +394,7 @@ export class HttpSource implements Source {
         srcUri: item.url,
         bytes: item.bytes,
         contentType: item.contentType,
+        ...(item.rendered ? { rendered: true } : {}),
       };
     }
   }
