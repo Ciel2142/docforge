@@ -216,6 +216,34 @@ describe("HttpSource", () => {
     ]);
   });
 
+  test("sitemap with only cross-origin and out-of-scope URLs falls back to BFS", async () => {
+    __clearRobotsCache();
+    pages = {
+      "/sitemap.xml": {
+        status: 200,
+        ctype: "application/xml",
+        body: `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>http://example.invalid/docs/x.html</loc></url><url><loc>http://localhost:${port}/blog/b.html</loc></url></urlset>`,
+      },
+      "/docs/": { status: 200, ctype: "text/html", body: `<html><a href="/docs/a.html">a</a></html>` },
+      "/docs/a.html": { status: 200, ctype: "text/html", body: `<html>a</html>` },
+      "/blog/b.html": { status: 200, ctype: "text/html", body: `<html>b</html>` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/docs/`,
+      { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
+      {
+        maxPages: 100, maxDepth: 10, concurrency: 1, userAgent: "t",
+        llmsFullMode: "off", llmsIndexMode: "off", scopePrefix: "/docs/",
+      },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items.map((i) => i.srcUri).sort()).toEqual([
+      `http://localhost:${port}/docs/`,
+      `http://localhost:${port}/docs/a.html`,
+    ]);
+  });
+
   test("sitemap without scopePrefix is unfiltered (regression)", async () => {
     __clearRobotsCache();
     pages = {

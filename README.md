@@ -36,7 +36,8 @@ Crawls are scoped to the seed's path prefix by default: seeding
 `https://docs.example.com/guide/` converts only pages under `/guide/`, in both
 sitemap and BFS modes (a sitemap with no in-scope entries falls back to BFS).
 A page seed scopes to its directory (`/guide/intro.html` → `/guide/`); an
-extensionless seed is treated as a directory (`/guide` → `/guide/`). Root
+extensionless seed is treated as a directory (`/guide` → `/guide/`), and any
+dotted last segment counts as a page too (`/guide/v1.2` → `/guide/`). Root
 seeds are unaffected. Pass `--scope origin` to crawl the whole origin.
 
 ```bash
