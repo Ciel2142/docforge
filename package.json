@@ -20,7 +20,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
+    "version": "node scripts/sync-version.mjs && git add src/index.ts",
+    "prepublishOnly": "npm test && npm run build",
     "dev": "tsx src/bin.ts",
     "pretest": "tsc",
     "test": "vitest run",
