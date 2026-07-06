@@ -18,6 +18,7 @@ import { runOpenapiPipeline } from "./openapi/pipeline.js";
 import { FilesystemSource, HttpSource, type Source, type SourceItem } from "./source.js";
 import type { FetchOptions } from "./http/fetch.js";
 import type { CrawlOptions } from "./http/crawl.js";
+import { createRenderer, type RendererHandle } from "./http/render.js";
 import { runVlmPass } from "./vlm/index.js";
 import type { VlmOptions, DescribeStats } from "./vlm/types.js";
 import { AssetStore } from "./assets/store.js";
@@ -36,6 +37,8 @@ export interface RunPipelineOptions {
   format?: "default" | "obsidian";
   saveImages?: boolean;
   citeLinks?: boolean;
+  /** Test/DI seam: injected renderer. When absent and renderMode is set, runPipeline creates one. */
+  renderer?: RendererHandle;
 }
 
 export interface PipelineResult {
@@ -47,6 +50,7 @@ export interface PipelineResult {
   vlm?: DescribeStats;
   assets?: AssetStats;
   citations?: { footnotes: number };
+  rendered?: number; // pages whose bytes came from the renderer (renderMode set only)
 }
 
 function isUrl(s: string): boolean {
@@ -74,6 +78,8 @@ export async function runPipeline(
   mkdirSync(opts.outputDir, { recursive: true });
   const format = opts.format ?? "default";
 
+  let renderer: RendererHandle | null = null;
+
   let source: Source;
   let sourceRoot: string | undefined;
   if (isUrl(opts.source)) {
@@ -87,7 +93,17 @@ export async function runPipeline(
         log("warn", `cache dir not writable: ${(e as Error).message}`);
       }
     }
-    source = new HttpSource(opts.source, opts.fetchOptions, opts.crawlOptions);
+    if (opts.crawlOptions.renderMode) {
+      renderer =
+        opts.renderer ??
+        (await createRenderer({
+          userAgent: opts.fetchOptions.userAgent,
+          timeoutMs: opts.fetchOptions.timeoutMs,
+          maxBytes: opts.fetchOptions.maxBytes,
+          ...(opts.fetchOptions.auth ? { auth: opts.fetchOptions.auth } : {}),
+        }));
+    }
+    source = new HttpSource(opts.source, opts.fetchOptions, opts.crawlOptions, renderer);
   } else {
     const fsPath = resolve(opts.source);
     if (!existsSync(fsPath)) throw new Error(`source not found: ${fsPath}`);
@@ -102,6 +118,7 @@ export async function runPipeline(
   let converted = 0;
   let empty = 0;
   let failed = 0;
+  let renderedCount = 0;
   const report: ReportEntry[] = [];
   const vlmStats: DescribeStats = { described: 0, skipped: 0, failed: 0, cached: 0 };
   const assetStore =
@@ -110,185 +127,197 @@ export async function runPipeline(
   let citationFootnotes = 0;
   const outputsUsed = new Map<string, string>();
 
-  for await (const item of source.iter()) {
-    if (signal?.aborted) throw new Error("aborted");
+  try {
+    for await (const item of source.iter()) {
+      if (signal?.aborted) throw new Error("aborted");
+      if (item.rendered) renderedCount += 1;
 
-    const outPath = computeOutputPath(item, opts.outputDir);
-    const prior = outputsUsed.get(outPath);
-    if (prior && prior !== item.srcUri) {
-      throw new Error(`output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
-    }
-    outputsUsed.set(outPath, item.srcUri);
+      const outPath = computeOutputPath(item, opts.outputDir);
+      const prior = outputsUsed.get(outPath);
+      if (prior && prior !== item.srcUri) {
+        throw new Error(`output path collision: ${outPath} from ${prior} AND ${item.srcUri}`);
+      }
+      outputsUsed.set(outPath, item.srcUri);
 
-    if (item.error) {
-      failed += 1;
-      log("error", `FAIL fetch ${item.key}: ${item.error}`);
-      report.push({
-        input: item.key, srcUri: item.srcUri, output: null,
-        status: "failed", error: item.error,
-      });
-      continue;
-    }
+      if (item.error) {
+        failed += 1;
+        log("error", `FAIL fetch ${item.key}: ${item.error}`);
+        report.push({
+          input: item.key, srcUri: item.srcUri, output: null,
+          status: "failed", error: item.error,
+        });
+        continue;
+      }
 
-    if (item.kind === "llms-full" || item.kind === "markdown") {
+      if (item.kind === "llms-full" || item.kind === "markdown") {
+        if (opts.dryRun) {
+          log("info", `DRY ${item.key} -> ${outPath}`);
+          continue;
+        }
+        const raw = item.bytes.toString("utf8");
+        let md: string;
+        if (format === "obsidian") {
+          const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
+          const stem = basename(item.key, extname(item.key)) || "index";
+          const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+          let body = stripHeadingAnchors(toObsidianWikilinks(raw, fromRel));
+          if (assetStore && opts.fetchOptions) {
+            const ap = await runAssetPass(body, item.srcUri, { fetchOpts: opts.fetchOptions }, assetStore);
+            body = ap.md;
+            assetStats.saved += ap.stats.saved;
+            assetStats.deduped += ap.stats.deduped;
+            assetStats.skipped += ap.stats.skipped;
+            assetStats.failed += ap.stats.failed;
+          }
+          md = buildObsidianOutput(stem, provenance, body);
+        } else {
+          md = stripHeadingAnchors(rewriteInternalLinks(raw));
+        }
+        writeOutput(outPath, md);
+        converted += 1;
+        report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
+        continue;
+      }
+
+      if (item.kind === "openapi") {
+        if (!item.spec) {
+          failed += 1;
+          log("error", `FAIL openapi ${item.key}: spec not pre-parsed`);
+          report.push({
+            input: item.key, srcUri: item.srcUri, output: null,
+            status: "failed", error: "spec not pre-parsed",
+          });
+          continue;
+        }
+        const specDir = outPath.replace(/(\.(json|ya?ml))?\.md$/i, "");
+        if (opts.dryRun) {
+          log("info", `DRY openapi ${item.key} -> ${specDir}/`);
+          continue;
+        }
+        try {
+          const oaResult = await runOpenapiPipeline({
+            source: item.srcUri,
+            outputDir: specDir,
+            spec: item.spec,
+          });
+          log(
+            "info",
+            `openapi ${item.key}: endpoints=${oaResult.endpoints} schemas=${oaResult.schemas}`,
+          );
+          converted += 1;
+          report.push({
+            input: item.key, srcUri: item.srcUri, output: specDir, status: "ok",
+          });
+        } catch (e) {
+          failed += 1;
+          const err = e instanceof Error ? e.message : String(e);
+          log("error", `FAIL openapi ${item.key}: ${err}`);
+          report.push({
+            input: item.key, srcUri: item.srcUri, output: null,
+            status: "failed", error: err,
+          });
+        }
+        continue;
+      }
+
       if (opts.dryRun) {
         log("info", `DRY ${item.key} -> ${outPath}`);
         continue;
       }
-      const raw = item.bytes.toString("utf8");
-      let md: string;
-      if (format === "obsidian") {
-        const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
-        const stem = basename(item.key, extname(item.key)) || "index";
-        const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
-        let body = stripHeadingAnchors(toObsidianWikilinks(raw, fromRel));
-        if (assetStore && opts.fetchOptions) {
-          const ap = await runAssetPass(body, item.srcUri, { fetchOpts: opts.fetchOptions }, assetStore);
-          body = ap.md;
-          assetStats.saved += ap.stats.saved;
-          assetStats.deduped += ap.stats.deduped;
-          assetStats.skipped += ap.stats.skipped;
-          assetStats.failed += ap.stats.failed;
-        }
-        md = buildObsidianOutput(stem, provenance, body);
+
+      const convertOpts: { selector?: string; url?: string } = {};
+      if (opts.selector !== undefined) convertOpts.selector = opts.selector;
+      if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
+        convertOpts.url = item.srcUri;
       } else {
-        md = stripHeadingAnchors(rewriteInternalLinks(raw));
+        // Local source: give Defuddle a structure-preserving base so relative
+        // internal links resolve correctly (empty base → `about:blank/...`).
+        convertOpts.url = LOCAL_BASE + encodeURI(item.key.split(sep).join("/"));
       }
-      writeOutput(outPath, md);
-      converted += 1;
-      report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
-      continue;
-    }
-
-    if (item.kind === "openapi") {
-      if (!item.spec) {
+      const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
+      if (result.status === "empty") {
+        empty += 1;
+        log("debug", `empty ${item.key}`);
+        report.push({
+          input: item.key, srcUri: item.srcUri, output: null, status: "empty",
+          ...(item.rendered ? { rendered: true } : {}),
+        });
+        continue;
+      }
+      if (result.status === "failed") {
         failed += 1;
-        log("error", `FAIL openapi ${item.key}: spec not pre-parsed`);
+        log("error", `FAIL ${item.key}: ${result.error}`);
         report.push({
           input: item.key, srcUri: item.srcUri, output: null,
-          status: "failed", error: "spec not pre-parsed",
+          status: "failed", error: result.error,
+          ...(item.rendered ? { rendered: true } : {}),
         });
         continue;
       }
-      const specDir = outPath.replace(/(\.(json|ya?ml))?\.md$/i, "");
-      if (opts.dryRun) {
-        log("info", `DRY openapi ${item.key} -> ${specDir}/`);
-        continue;
+
+      const stem = basename(item.key, extname(item.key)) || "index";
+      const title = extractTitle(result.h1_text, result.soup_title_text, stem);
+      const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
+      const isUrlSource = isUrl(item.srcUri);
+      const normalizedLinks = isUrlSource
+        ? relativizeSameOriginLinks(result.body_md, item.srcUri)
+        : delocalizeLinks(result.body_md, fromRel);
+      let bodyMd =
+        format === "obsidian"
+          ? toObsidianWikilinks(normalizedLinks, fromRel)
+          : rewriteInternalLinks(normalizedLinks);
+      if (
+        opts.vlm &&
+        opts.fetchOptions &&
+        (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://"))
+      ) {
+        try {
+          const vlmResult = await runVlmPass(bodyMd, item.srcUri, opts.vlm, opts.fetchOptions);
+          bodyMd = vlmResult.md;
+          vlmStats.described += vlmResult.stats.described;
+          vlmStats.skipped += vlmResult.stats.skipped;
+          vlmStats.failed += vlmResult.stats.failed;
+          vlmStats.cached += vlmResult.stats.cached;
+        } catch (e) {
+          const err = e instanceof Error ? e.message : String(e);
+          log("warn", `vlm pass failed for ${item.key}: ${err}`);
+        }
       }
-      try {
-        const oaResult = await runOpenapiPipeline({
-          source: item.srcUri,
-          outputDir: specDir,
-          spec: item.spec,
-        });
-        log(
-          "info",
-          `openapi ${item.key}: endpoints=${oaResult.endpoints} schemas=${oaResult.schemas}`,
+      if (assetStore) {
+        const ap = await runAssetPass(
+          bodyMd,
+          item.srcUri,
+          {
+            ...(opts.fetchOptions ? { fetchOpts: opts.fetchOptions } : {}),
+            ...(sourceRoot ? { sourceRoot } : {}),
+          },
+          assetStore,
         );
-        converted += 1;
-        report.push({
-          input: item.key, srcUri: item.srcUri, output: specDir, status: "ok",
-        });
-      } catch (e) {
-        failed += 1;
-        const err = e instanceof Error ? e.message : String(e);
-        log("error", `FAIL openapi ${item.key}: ${err}`);
-        report.push({
-          input: item.key, srcUri: item.srcUri, output: null,
-          status: "failed", error: err,
-        });
+        bodyMd = ap.md;
+        assetStats.saved += ap.stats.saved;
+        assetStats.deduped += ap.stats.deduped;
+        assetStats.skipped += ap.stats.skipped;
+        assetStats.failed += ap.stats.failed;
       }
-      continue;
-    }
-
-    if (opts.dryRun) {
-      log("info", `DRY ${item.key} -> ${outPath}`);
-      continue;
-    }
-
-    const convertOpts: { selector?: string; url?: string } = {};
-    if (opts.selector !== undefined) convertOpts.selector = opts.selector;
-    if (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://")) {
-      convertOpts.url = item.srcUri;
-    } else {
-      // Local source: give Defuddle a structure-preserving base so relative
-      // internal links resolve correctly (empty base → `about:blank/...`).
-      convertOpts.url = LOCAL_BASE + encodeURI(item.key.split(sep).join("/"));
-    }
-    const result = await convertHtml(item.bytes.toString("utf8"), convertOpts);
-    if (result.status === "empty") {
-      empty += 1;
-      log("debug", `empty ${item.key}`);
-      report.push({ input: item.key, srcUri: item.srcUri, output: null, status: "empty" });
-      continue;
-    }
-    if (result.status === "failed") {
-      failed += 1;
-      log("error", `FAIL ${item.key}: ${result.error}`);
+      if (opts.citeLinks) {
+        const cited = convertLinksToFootnotes(bodyMd);
+        bodyMd = cited.md;
+        citationFootnotes += cited.count;
+      }
+      const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
+      const content =
+        format === "obsidian"
+          ? buildObsidianOutput(title, provenance, bodyMd)
+          : buildOutput(title, item.key, bodyMd);
+      writeOutput(outPath, content);
+      converted += 1;
       report.push({
-        input: item.key, srcUri: item.srcUri, output: null,
-        status: "failed", error: result.error,
+        input: item.key, srcUri: item.srcUri, output: outPath, status: "ok",
+        ...(item.rendered ? { rendered: true } : {}),
       });
-      continue;
     }
-
-    const stem = basename(item.key, extname(item.key)) || "index";
-    const title = extractTitle(result.h1_text, result.soup_title_text, stem);
-    const fromRel = relative(opts.outputDir, outPath).split(sep).join("/");
-    const isUrlSource = isUrl(item.srcUri);
-    const normalizedLinks = isUrlSource
-      ? relativizeSameOriginLinks(result.body_md, item.srcUri)
-      : delocalizeLinks(result.body_md, fromRel);
-    let bodyMd =
-      format === "obsidian"
-        ? toObsidianWikilinks(normalizedLinks, fromRel)
-        : rewriteInternalLinks(normalizedLinks);
-    if (
-      opts.vlm &&
-      opts.fetchOptions &&
-      (item.srcUri.startsWith("http://") || item.srcUri.startsWith("https://"))
-    ) {
-      try {
-        const vlmResult = await runVlmPass(bodyMd, item.srcUri, opts.vlm, opts.fetchOptions);
-        bodyMd = vlmResult.md;
-        vlmStats.described += vlmResult.stats.described;
-        vlmStats.skipped += vlmResult.stats.skipped;
-        vlmStats.failed += vlmResult.stats.failed;
-        vlmStats.cached += vlmResult.stats.cached;
-      } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
-        log("warn", `vlm pass failed for ${item.key}: ${err}`);
-      }
-    }
-    if (assetStore) {
-      const ap = await runAssetPass(
-        bodyMd,
-        item.srcUri,
-        {
-          ...(opts.fetchOptions ? { fetchOpts: opts.fetchOptions } : {}),
-          ...(sourceRoot ? { sourceRoot } : {}),
-        },
-        assetStore,
-      );
-      bodyMd = ap.md;
-      assetStats.saved += ap.stats.saved;
-      assetStats.deduped += ap.stats.deduped;
-      assetStats.skipped += ap.stats.skipped;
-      assetStats.failed += ap.stats.failed;
-    }
-    if (opts.citeLinks) {
-      const cited = convertLinksToFootnotes(bodyMd);
-      bodyMd = cited.md;
-      citationFootnotes += cited.count;
-    }
-    const provenance = /^https?:\/\//i.test(item.srcUri) ? item.srcUri : item.key;
-    const content =
-      format === "obsidian"
-        ? buildObsidianOutput(title, provenance, bodyMd)
-        : buildOutput(title, item.key, bodyMd);
-    writeOutput(outPath, content);
-    converted += 1;
-    report.push({ input: item.key, srcUri: item.srcUri, output: outPath, status: "ok" });
+  } finally {
+    if (renderer) await renderer.close();
   }
 
   return {
@@ -300,5 +329,6 @@ export async function runPipeline(
     ...(opts.vlm ? { vlm: vlmStats } : {}),
     ...(assetStore ? { assets: assetStats } : {}),
     ...(opts.citeLinks ? { citations: { footnotes: citationFootnotes } } : {}),
+    ...(opts.crawlOptions?.renderMode ? { rendered: renderedCount } : {}),
   };
 }

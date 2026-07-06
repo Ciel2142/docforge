@@ -77,6 +77,7 @@ export interface ReportEntry {
   output: string | null;
   status: ReportStatus;
   error?: string;
+  rendered?: boolean; // bytes came from the headless renderer
 }
 
 export interface Report {
