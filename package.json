@@ -1,6 +1,6 @@
 {
   "name": "@ciel2142/docforge",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Convert documentation sources to Markdown for RAG ingestion.",
   "type": "module",
   "license": "MIT",
