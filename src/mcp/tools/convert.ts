@@ -17,6 +17,7 @@ import { VERSION } from "../../index.js";
 import { probeLlmsFullTxt } from "../../http/llms.js";
 import { probeLlmsTxt } from "../../http/llms-index.js";
 import type { FetchOptions } from "../../http/fetch.js";
+import { scopePrefixFromSeed } from "../../http/url.js";
 
 interface ConvertArgs {
   url: string;
@@ -32,6 +33,7 @@ interface ConvertArgs {
   force_refresh?: boolean;
   preview_bytes?: number;
   exclude_hosts?: string[];
+  scope?: "path" | "origin";
   auth_header?: string;
   describe_images?: boolean;
   vlm_min_dim?: number;
@@ -79,6 +81,7 @@ function parseArgs(raw: Record<string, unknown>): ConvertArgs {
     }
     if (hosts.length > 0) args.exclude_hosts = hosts;
   }
+  if (raw.scope === "path" || raw.scope === "origin") args.scope = raw.scope;
   if (raw.format === "default" || raw.format === "obsidian") args.format = raw.format;
   return args;
 }
@@ -208,6 +211,12 @@ export const convertTool: ToolDefinition = {
         items: { type: "string" },
         description: "skip URLs whose host matches any entry (exact or .suffix match). e.g. ['linkedin.com','discord.gg']",
       },
+      scope: {
+        type: "string",
+        enum: ["path", "origin"],
+        default: "path",
+        description: "site-crawl scope: path = only URLs under the seed's path prefix (e.g. /docs/**), origin = whole origin",
+      },
       describe_images: {
         type: "boolean",
         default: false,
@@ -257,6 +266,8 @@ export const convertTool: ToolDefinition = {
 
       const kind = await resolveKind(args, args.user_agent ?? ctx.config.userAgent);
 
+      const scopePrefix =
+        (args.scope ?? "path") === "path" ? scopePrefixFromSeed(args.url) : null;
       const pipelineOpts: RunPipelineOptions = {
         source: args.url,
         outputDir: paths.tmp,
@@ -280,6 +291,7 @@ export const convertTool: ToolDefinition = {
           llmsIndexMode: kind === "llms-index" ? "force" : "off",
           singlePage: kind === "page",
           ...(args.exclude_hosts ? { excludeHosts: args.exclude_hosts } : {}),
+          ...(scopePrefix ? { scopePrefix } : {}),
         },
       };
       if (args.selector !== undefined) pipelineOpts.selector = args.selector;

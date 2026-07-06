@@ -216,7 +216,7 @@ Add to your `mcpServers` config:
 
 ### Tools
 
-- **`convert(url, corpus?, kind?, llms_full?, llms_index?, selector?, exclude_hosts?, ...)`** —
+- **`convert(url, corpus?, kind?, scope?, llms_full?, llms_index?, selector?, exclude_hosts?, ...)`** —
   fetch a URL and write Markdown under `$DOCFORGE_QMD_ROOT/<collection>/`.
   Detects llms-full.txt by default, then llms.txt (curated index), falls
   back to single-page or site crawl. Returns the first-page Markdown
@@ -232,6 +232,9 @@ Add to your `mcpServers` config:
   exact match or `.suffix` (so `"linkedin.com"` also skips
   `www.linkedin.com`). Useful for dropping social/community URLs commonly
   listed in llms.txt: `["linkedin.com","discord.gg","twitter.com"]`.
+  `scope` (`path` default | `origin`) bounds site crawls to the seed's path
+  prefix — seeding `…/docs/` converts only `/docs/**`; pass `origin` for the
+  whole origin.
 - **`convert_openapi(source, is_inline?, format?, corpus?, ...)`** — same
   shape, accepts either a spec URL or an inline JSON/YAML string.
 - **`list_corpora(filter?)`** — enumerate `.docforge.json` manifests under
