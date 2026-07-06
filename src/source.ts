@@ -10,7 +10,7 @@ import { fetchUrl, FetchError, type FetchOptions } from "./http/fetch.js";
 import { getRobots } from "./http/robots.js";
 import { discoverSitemaps } from "./http/sitemap.js";
 import { crawlBfs, type CrawlOptions } from "./http/crawl.js";
-import { normalizeUrl } from "./http/url.js";
+import { normalizeUrl, underScope } from "./http/url.js";
 import { probeLlmsFullTxt } from "./http/llms.js";
 import { probeLlmsTxt, type LlmsIndexEntry } from "./http/llms-index.js";
 import { log } from "./log.js";
@@ -203,9 +203,13 @@ export class HttpSource implements Source {
     const origin = new URL(normalized).origin;
     const robots = await getRobots(origin, this.fetchOpts);
     const sitemapUrls = await discoverSitemaps(normalized, robots, this.fetchOpts);
+    // Scope-filter before the mode decision: a sitemap whose entries are all
+    // out of scope must fall back to BFS, not produce an empty corpus.
+    const prefix = this.crawlOpts.scopePrefix;
+    const scoped = prefix ? sitemapUrls.filter((u) => underScope(u, prefix)) : sitemapUrls;
 
-    if (sitemapUrls.length > 0) {
-      yield* this.iterFromSitemap(sitemapUrls, robots);
+    if (scoped.length > 0) {
+      yield* this.iterFromSitemap(scoped, robots);
     } else {
       yield* this.iterFromBfs(robots);
     }
