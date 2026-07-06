@@ -32,13 +32,21 @@ sitemap discovery first (robots.txt `Sitemap:` directives, then `/sitemap.xml`,
 then `/sitemap_index.xml`) and falls back to a BFS crawl bounded by
 `--max-pages` / `--max-depth` and the seed origin. `robots.txt` is honored.
 
+Crawls are scoped to the seed's path prefix by default: seeding
+`https://docs.example.com/guide/` converts only pages under `/guide/`, in both
+sitemap and BFS modes (a sitemap with no in-scope entries falls back to BFS).
+A page seed scopes to its directory (`/guide/intro.html` → `/guide/`); an
+extensionless seed is treated as a directory (`/guide` → `/guide/`). Root
+seeds are unaffected. Pass `--scope origin` to crawl the whole origin.
+
 ```bash
 docforge convert https://docs.example.com/ --output ./md
 docforge openapi https://api.example.com/openapi.yaml --output ./api-md
 ```
 
 URL-only flags: `--max-pages` (5000), `--max-depth` (10), `--concurrency` (4),
-`--cache-dir` (`~/.cache/docforge`), `--no-cache`, `--user-agent`.
+`--scope` (`path`), `--cache-dir` (`~/.cache/docforge`), `--no-cache`,
+`--user-agent`.
 
 Responses are cached on disk with ETag/Last-Modified revalidation so repeat
 runs are cheap.
