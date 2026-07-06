@@ -44,6 +44,7 @@ async function collect(rootUrl: string, robots: Robots, opts: Partial<{
   maxPages: number;
   maxDepth: number;
   concurrency: number;
+  scopePrefix: string;
 }> = {}): Promise<string[]> {
   const seen: string[] = [];
   for await (const item of crawlBfs(rootUrl, robots, fetchOpts(), {
@@ -52,6 +53,7 @@ async function collect(rootUrl: string, robots: Robots, opts: Partial<{
     concurrency: opts.concurrency ?? 1,
     userAgent: "docforge-test/0",
     llmsFullMode: "off" as const,
+    ...(opts.scopePrefix !== undefined ? { scopePrefix: opts.scopePrefix } : {}),
   })) {
     seen.push(item.url);
   }
@@ -134,6 +136,35 @@ describe("crawlBfs", () => {
     expect(urls).toEqual([
       `http://localhost:${port}/`,
       `http://localhost:${port}/a`,
+    ]);
+  });
+
+  test("scopePrefix restricts link admission to the prefix subtree", async () => {
+    pages = {
+      "/docs/": `<html><a href="/docs/a">a</a><a href="/blog/b">b</a></html>`,
+      "/docs/a": `<html>a</html>`,
+      "/blog/b": `<html>b</html>`,
+    };
+    const urls = await collect(`http://localhost:${port}/docs/`, allowAll(), {
+      scopePrefix: "/docs/",
+    });
+    expect(urls).toEqual([
+      `http://localhost:${port}/docs/`,
+      `http://localhost:${port}/docs/a`,
+    ]);
+  });
+
+  test("without scopePrefix the whole origin is crawled (regression)", async () => {
+    pages = {
+      "/docs/": `<html><a href="/docs/a">a</a><a href="/blog/b">b</a></html>`,
+      "/docs/a": `<html>a</html>`,
+      "/blog/b": `<html>b</html>`,
+    };
+    const urls = await collect(`http://localhost:${port}/docs/`, allowAll());
+    expect(urls).toEqual([
+      `http://localhost:${port}/blog/b`,
+      `http://localhost:${port}/docs/`,
+      `http://localhost:${port}/docs/a`,
     ]);
   });
 });

@@ -1,7 +1,7 @@
 import PQueue from "p-queue";
 import { load as loadHtml } from "cheerio";
 import { fetchUrl, FetchError, type FetchOptions } from "./fetch.js";
-import { normalizeUrl, sameOrigin } from "./url.js";
+import { normalizeUrl, sameOrigin, underScope } from "./url.js";
 import type { Robots } from "./robots.js";
 import { log } from "../log.js";
 
@@ -14,6 +14,7 @@ export interface CrawlOptions {
   llmsIndexMode?: "auto" | "force" | "off";
   singlePage?: boolean;
   excludeHosts?: string[];
+  scopePrefix?: string; // path prefix (e.g. "/docs/"); undefined = unrestricted
 }
 
 export interface CrawlItem {
@@ -76,6 +77,7 @@ export async function* crawlBfs(
         const links = extractLinks(item.bytes.toString("utf8"), entry.url);
         for (const link of links) {
           if (!sameOrigin(link, root)) continue;
+          if (crawlOpts.scopePrefix && !underScope(link, crawlOpts.scopePrefix)) continue;
           if (!robots.isAllowed(link, crawlOpts.userAgent)) continue;
           if (visited.has(link)) continue;
           visited.add(link);
