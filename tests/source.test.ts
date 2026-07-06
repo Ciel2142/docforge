@@ -244,6 +244,33 @@ describe("HttpSource", () => {
     ]);
   });
 
+  test("sitemap with only cross-origin URLs falls back to BFS when unscoped", async () => {
+    // Domain-moved site (docf-801): sitemap advertises the new host only.
+    // Without a scope prefix the mode decision must still drop cross-origin
+    // entries, else sitemap mode is chosen and yields an empty corpus.
+    __clearRobotsCache();
+    pages = {
+      "/sitemap.xml": {
+        status: 200,
+        ctype: "application/xml",
+        body: `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>http://example.invalid/docs/x.html</loc></url></urlset>`,
+      },
+      "/": { status: 200, ctype: "text/html", body: `<html><a href="/a.html">a</a></html>` },
+      "/a.html": { status: 200, ctype: "text/html", body: `<html>a</html>` },
+    };
+    const source = new HttpSource(
+      `http://localhost:${port}/`,
+      { userAgent: "t", timeoutMs: 1_000, maxBytes: 1_000_000, cacheDir: null },
+      { maxPages: 100, maxDepth: 10, concurrency: 1, userAgent: "t", llmsFullMode: "off", llmsIndexMode: "off" },
+    );
+    const items = [];
+    for await (const it of source.iter()) items.push(it);
+    expect(items.map((i) => i.srcUri).sort()).toEqual([
+      `http://localhost:${port}/`,
+      `http://localhost:${port}/a.html`,
+    ]);
+  });
+
   test("sitemap without scopePrefix is unfiltered (regression)", async () => {
     __clearRobotsCache();
     pages = {

@@ -213,11 +213,13 @@ export class HttpSource implements Source {
     const robots = await getRobots(origin, this.fetchOpts);
     const sitemapUrls = await discoverSitemaps(normalized, robots, this.fetchOpts);
     // Scope-filter before the mode decision: a sitemap whose entries are all
-    // out of scope must fall back to BFS, not produce an empty corpus.
+    // out of scope must fall back to BFS, not produce an empty corpus. Origin
+    // is checked even without a prefix — a domain-moved site's sitemap can
+    // point exclusively at the new host (docf-801).
     const prefix = this.crawlOpts.scopePrefix;
-    const scoped = prefix
-      ? sitemapUrls.filter((u) => sameOrigin(u, normalized) && underScope(u, prefix))
-      : sitemapUrls;
+    const scoped = sitemapUrls.filter(
+      (u) => sameOrigin(u, normalized) && (!prefix || underScope(u, prefix)),
+    );
 
     if (scoped.length > 0) {
       yield* this.iterFromSitemap(scoped, robots);
