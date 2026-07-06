@@ -1,5 +1,5 @@
 import { load as loadHtml } from "cheerio";
-import { FetchError } from "./fetch.js";
+import { FetchError, fetchUrl, type FetchOptions, type FetchResult } from "./fetch.js";
 import { log } from "../log.js";
 import type { Browser, BrowserContext } from "playwright";
 
@@ -177,4 +177,34 @@ function toRenderFetchError(url: string, e: unknown): FetchError {
   if (e instanceof FetchError) return e;
   const msg = e instanceof Error ? e.message : String(e);
   return new FetchError(`render failed ${url}: ${msg}`, null, e);
+}
+
+export type RenderMode = "auto" | "force";
+
+/**
+ * Static fetch first, then optionally swap in rendered bytes.
+ * Fetch-first preserves HTTP status semantics, the response cache, and
+ * OpenAPI JSON/YAML detection (rendering a .json URL would corrupt it).
+ * Only successful (fetchUrl returns only status < 400) text/html responses render.
+ */
+export async function fetchMaybeRender(
+  url: string,
+  fetchOpts: FetchOptions,
+  renderMode: RenderMode | undefined,
+  renderer: PageRenderer | null,
+): Promise<FetchResult & { rendered?: boolean }> {
+  const res = await fetchUrl(url, fetchOpts);
+  if (!renderMode || !renderer) return res;
+  if (!/^text\/html/i.test(res.contentType)) return res;
+  if (renderMode === "auto" && !looksJsRendered(res.bytes.toString("utf8"))) return res;
+  try {
+    const rendered = await renderer.render(url);
+    return { ...res, bytes: rendered.bytes, contentType: rendered.contentType, rendered: true };
+  } catch (e) {
+    if (renderMode === "auto") {
+      log("warn", `render failed for ${url}, falling back to static bytes: ${(e as Error).message}`);
+      return res;
+    }
+    throw e instanceof FetchError ? e : toRenderFetchError(url, e);
+  }
 }
