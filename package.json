@@ -1,15 +1,26 @@
 {
-  "name": "docforge",
+  "name": "@ciel2142/docforge",
   "version": "0.8.0",
   "description": "Convert documentation sources to Markdown for RAG ingestion.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ciel2142/docforge.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "docforge": "dist/bin.js",
     "docforge-mcp": "dist/mcp/bin.js"
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "dev": "tsx src/bin.ts",
     "pretest": "tsc",
     "test": "vitest run",
