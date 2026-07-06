@@ -184,6 +184,9 @@ docforge convert https://spa-docs.example.com/docs --output ./out --render auto
 - `--render force` — render every HTML page (slower; ~1–3s per page).
 - Robots, `--scope`, `--max-pages`, `--max-depth`, crawl-delay, and `--max-bytes` apply
   unchanged. Rendered output is not cached between runs (static responses still are).
+  Note: the crawler checks `--max-pages` between BFS levels, so `--render force` can render
+  up to one full level past the budget before stopping — prefer `--render auto` on
+  link-dense sites.
 - `--auth-header` is honored during rendering and sent only to the root origin — never
   to cross-origin subresources.
 - Known limitation: subresources fetched by the browser during render (scripts, XHR)
